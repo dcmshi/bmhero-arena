@@ -1,0 +1,23 @@
+# ROMs — never commit, never ship (copyrighted; the recomp requires users to
+# supply their own copy)
+*.z64
+*.n64
+*.v64
+
+# Build output
+build/
+out/
+*.o
+*.obj
+*.exe
+/test
+/test_det
+/hash_check
+/t
+
+# Editor / OS
+.vs/
+.vscode/
+.idea/
+*.swp
+.DS_Store

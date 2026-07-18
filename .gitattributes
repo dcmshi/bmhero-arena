@@ -1,0 +1,5 @@
+# Keep LF everywhere — this tree gets folded into the BMHeroRecomp fork and
+# builds on Linux/macOS CI runners.
+* text=auto eol=lf
+*.z64 binary
+*.png binary
