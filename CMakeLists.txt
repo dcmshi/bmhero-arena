@@ -22,3 +22,9 @@ add_test(NAME determinism COMMAND test_determinism)
 # --- viewer pure-logic modules (no SDL; always built and tested) ---
 add_executable(test_viewer_clock tests/test_viewer_clock.c tools/viewer/viewer_clock.c)
 add_test(NAME viewer_clock COMMAND test_viewer_clock)
+
+add_executable(test_viewer_cam tests/test_viewer_cam.c tools/viewer/viewer_cam.c)
+if(NOT MSVC)
+  target_link_libraries(test_viewer_cam m)
+endif()
+add_test(NAME viewer_cam COMMAND test_viewer_cam)
