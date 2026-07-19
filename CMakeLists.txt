@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(bmhero_arena C)
+project(bmhero_arena C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -31,6 +31,27 @@ if(NOT MSVC)
   target_compile_options(test_bomb_mechanics PRIVATE -Wconversion -Wno-sign-conversion)
 endif()
 add_test(NAME bomb_mechanics COMMAND test_bomb_mechanics)
+
+# --- netplay: GekkoNet (BSD-2, C API, C++ internals) via FetchContent ---
+include(FetchContent)
+FetchContent_Declare(gekkonet
+  GIT_REPOSITORY https://github.com/HeatXD/GekkoNet.git
+  GIT_TAG        v20260629200724-02c447c
+  SOURCE_SUBDIR  GekkoLib)          # library only; skips SDL3 examples
+FetchContent_MakeAvailable(gekkonet)
+
+add_library(arena_netplay STATIC src/netplay/sync_session.c)
+target_include_directories(arena_netplay PUBLIC
+  src src/netplay ${gekkonet_SOURCE_DIR}/GekkoLib/include)
+target_compile_definitions(arena_netplay PUBLIC GEKKONET_STATIC)
+target_link_libraries(arena_netplay PUBLIC arena_sim GekkoNet)
+if(WIN32)
+  target_link_libraries(arena_netplay PUBLIC ws2_32)
+endif()
+
+add_executable(test_netplay_link tests/test_netplay_link.c)
+target_link_libraries(test_netplay_link arena_netplay)
+add_test(NAME netplay_link COMMAND test_netplay_link)
 
 # --- viewer pure-logic modules (no SDL; always built and tested) ---
 add_executable(test_viewer_clock tests/test_viewer_clock.c tools/viewer/viewer_clock.c)
