@@ -8,16 +8,22 @@
 
 typedef struct { float x, y, z; } Vf3;
 
+/* Camera modes. FOLLOW is the authentic Hero behavior: the camera tracks
+ * position at a fixed yaw and never rotates with facing (the original's
+ * camera is fixed-angle; running left/right does not turn the view). */
+enum { VCAM_FOLLOW, VCAM_CHASE, VCAM_ORBIT, VCAM_TOPDOWN, VCAM_NUM_MODES };
+
 typedef struct {
     /* rig constants — viewer-only, tune freely */
     float dist, height, look_up;   /* boom length, eye height, aim height */
-    float smooth;                  /* yaw lerp per update, 0..1 */
-    float max_turn;                /* yaw rate cap, radians per update */
+    float smooth;                  /* CHASE: yaw lerp per update, 0..1 */
+    float max_turn;                /* CHASE: yaw rate cap, radians per update */
     float fov_deg;
     float ortho_halfspan;          /* top-down: world units center -> edge */
+    float orbit_height, orbit_dist;/* ORBIT: fixed seat framing the arena */
     /* state */
     float yaw;                     /* radians */
-    int   topdown;
+    int   mode;                    /* VCAM_* */
     Vf3   pos, target;             /* derived by vcam_update */
 } ViewerCam;
 

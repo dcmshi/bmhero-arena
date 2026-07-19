@@ -13,21 +13,35 @@ void vcam_init(ViewerCam* c) {
     c->dist = 4.0f; c->height = 5.0f; c->look_up = 1.0f;   /* ~45 deg pitch */
     c->smooth = 0.05f; c->max_turn = 0.02f;    /* ~1.1 deg/frame swing cap */
     c->fov_deg = 60.0f; c->ortho_halfspan = 7.5f;
-    c->yaw = 0.0f; c->topdown = 0;
+    c->orbit_height = 9.0f; c->orbit_dist = 11.0f;
+    c->yaw = 0.0f; c->mode = VCAM_FOLLOW;
     c->pos = (Vf3){0, c->height, c->dist};
     c->target = (Vf3){0, c->look_up, 0};
 }
 
 void vcam_update(ViewerCam* c, Vf3 p, float yaw_rad) {
-    float diff = wrap_pi(yaw_rad - c->yaw);
-    /* Near-opposition (player running at the camera) the swing direction is
-     * ambiguous and diff's sign flips tick-to-tick -> jitter. Hold instead. */
-    if (fabsf(diff) < 2.9f) {
-        float step = c->smooth * diff;
-        /* proportional follow whips on big diffs (deadband recovery): cap it */
-        if (step >  c->max_turn) step =  c->max_turn;
-        if (step < -c->max_turn) step = -c->max_turn;
-        c->yaw = wrap_pi(c->yaw + step);
+    switch (c->mode) {
+    case VCAM_CHASE: {
+        float diff = wrap_pi(yaw_rad - c->yaw);
+        /* Near-opposition (player running at the camera) the swing direction
+         * is ambiguous and diff's sign flips tick-to-tick -> jitter. Hold. */
+        if (fabsf(diff) < 2.9f) {
+            float step = c->smooth * diff;
+            /* proportional follow whips on big diffs (deadband recovery) */
+            if (step >  c->max_turn) step =  c->max_turn;
+            if (step < -c->max_turn) step = -c->max_turn;
+            c->yaw = wrap_pi(c->yaw + step);
+        }
+        break;
+    }
+    case VCAM_ORBIT:                 /* fixed seat framing the whole arena —
+                                        the battle-mode camera (design §7) */
+        c->yaw = 0.0f;
+        c->pos = (Vf3){0, c->orbit_height, c->orbit_dist};
+        c->target = (Vf3){0, 0.5f, 0};
+        return;
+    default:                         /* FOLLOW: fixed yaw, position tracking */
+        break;
     }
     c->target = (Vf3){ p.x, p.y + c->look_up, p.z };
     float fx = sinf(c->yaw), fz = -cosf(c->yaw);   /* look dir on XZ */
@@ -46,7 +60,7 @@ static Vf3 vnorm(Vf3 a) {
 
 int vcam_project(const ViewerCam* c, Vf3 p, int w, int h,
                  float* sx, float* sy, float* depth) {
-    if (c->topdown) {
+    if (c->mode == VCAM_TOPDOWN) {
         float scale = (float)(w < h ? w : h) / (2.0f * c->ortho_halfspan);
         *sx = (float)w * 0.5f + p.x * scale;
         *sy = (float)h * 0.5f + p.z * scale;
@@ -69,7 +83,7 @@ int vcam_project(const ViewerCam* c, Vf3 p, int w, int h,
 float vcam_screen_radius(const ViewerCam* c, Vf3 p, float world_r, int w, int h) {
     float sx0, sy0, sx1, sy1, d;
     if (!vcam_project(c, p, w, h, &sx0, &sy0, &d)) return 0;
-    if (c->topdown) {
+    if (c->mode == VCAM_TOPDOWN) {
         float scale = (float)(w < h ? w : h) / (2.0f * c->ortho_halfspan);
         return world_r * scale;
     }
@@ -84,7 +98,7 @@ float vcam_screen_radius(const ViewerCam* c, Vf3 p, float world_r, int w, int h)
 void vcam_stick_to_world(const ViewerCam* c, float in_x, float in_y,
                          int* out_sx, int* out_sy) {
     float wx, wz;
-    if (c->topdown) {
+    if (c->mode == VCAM_TOPDOWN) {
         wx = in_x; wz = -in_y;
     } else {
         float fx = sinf(c->yaw), fz = -cosf(c->yaw);   /* camera forward, XZ */

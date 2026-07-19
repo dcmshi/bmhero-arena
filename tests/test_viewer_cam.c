@@ -21,8 +21,26 @@ int main(void) {
           "camera at (0, height, +dist) behind -Z-facing player");
     CHECK(NEAR(c.target.y, 1.0f, 1e-4f), "look target lifted by look_up");
 
+    /* FOLLOW (default, authentic Hero): yaw NEVER rotates with facing */
+    vcam_init(&c);
+    c.yaw = 0.0f;
+    vcam_update(&c, (Vf3){2, 0, 3}, 2.0f);       /* player facing elsewhere */
+    CHECK(NEAR(c.yaw, 0, 1e-6f), "FOLLOW: camera yaw fixed regardless of facing");
+    CHECK(NEAR(c.pos.x, 2, 1e-4f) && NEAR(c.pos.y, 5, 1e-4f) && NEAR(c.pos.z, 7, 1e-4f),
+          "FOLLOW: position tracks the player at the fixed yaw");
+
+    /* ORBIT: fixed seat framing the arena, ignores the player entirely */
+    vcam_init(&c);
+    c.mode = VCAM_ORBIT;
+    vcam_update(&c, (Vf3){5, 0, -3}, 1.0f);
+    CHECK(NEAR(c.pos.x, 0, 1e-6f) && NEAR(c.pos.y, c.orbit_height, 1e-6f)
+          && NEAR(c.pos.z, c.orbit_dist, 1e-6f), "ORBIT: camera seat is fixed");
+    CHECK(NEAR(c.target.x, 0, 1e-6f) && NEAR(c.target.z, 0, 1e-6f),
+          "ORBIT: looks at arena center");
+
     /* yaw smoothing takes the short way across +/-pi */
     vcam_init(&c);
+    c.mode = VCAM_CHASE;
     c.yaw = 2.8f; c.smooth = 0.25f;
     vcam_update(&c, (Vf3){0, 0, 0}, -2.8f);
     CHECK(c.yaw > 2.8f || c.yaw < -2.8f, "yaw wraps across pi, no long-way spin");
@@ -30,6 +48,7 @@ int main(void) {
     /* opposition: walking straight at the camera must not swing the yaw —
      * the swing direction is ambiguous at ~180 and flips sign every tick */
     vcam_init(&c);
+    c.mode = VCAM_CHASE;
     c.yaw = 0.0f; c.smooth = 0.25f;
     vcam_update(&c, (Vf3){0, 0, 0}, PI_F);
     float y_opp1 = c.yaw;
@@ -43,11 +62,13 @@ int main(void) {
     /* big swings are rate-limited: recovering from near-opposition must not
      * whip the camera around at smooth*diff speed */
     vcam_init(&c);
+    c.mode = VCAM_CHASE;
     c.yaw = 0.0f; c.smooth = 0.25f;
     vcam_update(&c, (Vf3){0, 0, 0}, 2.5f);
     CHECK(NEAR(c.yaw, c.max_turn, 1e-4f), "turn speed capped at max_turn/update");
     /* small corrections (normal forward running) are NOT rate-limited */
     vcam_init(&c);
+    c.mode = VCAM_CHASE;
     c.yaw = 0.0f; c.smooth = 0.25f; c.max_turn = 1.0f;  /* isolate proportional */
     vcam_update(&c, (Vf3){0, 0, 0}, 0.1f);
     CHECK(NEAR(c.yaw, 0.025f, 1e-4f), "small diffs use proportional follow");
@@ -75,7 +96,7 @@ int main(void) {
 
     /* top-down ortho */
     vcam_init(&c);
-    c.topdown = 1;
+    c.mode = VCAM_TOPDOWN;
     CHECK(vcam_project(&c, (Vf3){0, 0, 0}, 1280, 720, &sx, &sy, &d) == 1, "topdown visible");
     CHECK(NEAR(sx, 640, 0.5f) && NEAR(sy, 360, 0.5f), "topdown origin centers");
     vcam_project(&c, (Vf3){1, 0, 0}, 1280, 720, &sx, &sy, &d);
@@ -99,7 +120,7 @@ int main(void) {
     vcam_stick_to_world(&c, 1, 1, &ix, &iy);
     CHECK(ix * ix + iy * iy <= 32 * 32, "diagonal magnitude clamped to 1.0");
     /* top-down bypasses camera yaw */
-    c.topdown = 1; c.yaw = PI_F / 2;
+    c.mode = VCAM_TOPDOWN; c.yaw = PI_F / 2;
     vcam_stick_to_world(&c, 0, 1, &ix, &iy);
     CHECK(ix == 0 && iy == -31, "topdown: identity mapping regardless of yaw");
 

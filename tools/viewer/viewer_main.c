@@ -81,6 +81,8 @@ int main(int argc, char** argv) {
     ViewerCam cam;   vcam_init(&cam);
     ViewerClock clk; vclock_init(&clk);
     int cam_target = 0, show_grid = 1, running = 1, frame = 0;
+    int allow_sd = 0;   /* sudden-death walls off by default (F2): they cut
+                           long feel-testing sessions short */
     uint64_t t_prev = SDL_GetTicksNS();
 
     while (running) {
@@ -97,7 +99,8 @@ int main(int argc, char** argv) {
                 case SDLK_RIGHTBRACKET: vclock_queue_step(&clk); break;
                 case SDLK_LEFTBRACKET:  vclock_cycle_rate(&clk); break;
                 case SDLK_TAB:          cam_target = (cam_target + 1) % state.num_players; break;
-                case SDLK_F1:           cam.topdown = !cam.topdown; break;
+                case SDLK_F1:           cam.mode = (cam.mode + 1) % VCAM_NUM_MODES; break;
+                case SDLK_F2:           allow_sd = !allow_sd; break;
                 case SDLK_G:            show_grid = !show_grid; break;
                 case SDLK_R:
                     if (e.key.mod & SDL_KMOD_SHIFT)
@@ -133,6 +136,14 @@ int main(int argc, char** argv) {
                 for (int i = 0; i < state.num_players; i++)
                     in[i] = read_input(&pads, i, &cam);
             arena_tick(&state, in);
+        }
+
+        /* Debug-only state surgery (never in smoke runs, sim code untouched):
+         * hold the walls open so sudden death can't cut a test session short. */
+        if (!smoke && !allow_sd && state.phase == PHASE_SUDDEN_DEATH) {
+            state.phase = PHASE_PLAY;
+            state.phase_timer = 0;      /* restart the 2:00 round clock */
+            state.shrink_step = 0;
         }
 
         const ArenaPlayer* tp = &state.players[cam_target];
