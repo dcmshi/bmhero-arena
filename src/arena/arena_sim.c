@@ -100,13 +100,15 @@ static void detonate(ArenaState* s, int bi) {
     b->state = BSTATE_FREE;
 }
 
-/* Launch bomb b from player pi's hands along binary-angle dir. */
+/* Launch bomb b from player pi's hands along binary-angle dir.
+ * Fixed launch — no stick or momentum term (decomp 69AA0.c: velocity is
+ * moveSpeed x pitch x facing only; jump-throws go farther via HEIGHT). */
 static void throw_bomb(ArenaState* s, int pi, ArenaBomb* b, uint16_t dir,
                        q32 fwd, q32 up) {
     const ArenaPlayer* p = &s->players[pi];
     b->pos = p->pos; b->pos.y += TUNE_PLAYER_HEIGHT;
-    b->vel.x =  qmul(qsin(dir), fwd) + p->vel.x;
-    b->vel.z = -qmul(qcos(dir), fwd) + p->vel.z;
+    b->vel.x =  qmul(qsin(dir), fwd);
+    b->vel.z = -qmul(qcos(dir), fwd);
     b->vel.y = up;
     b->state   = BSTATE_AIRBORNE;
     b->bounced = 0;
@@ -171,13 +173,8 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
         } else if (!bomb_now && bomb_prev && p->held_bomb) {
             ArenaBomb* held = &s->bombs[p->held_bomb - 1];
             if (p->timer < TUNE_SPREAD_TICKS) {
-                /* single arc: distance scales with stick tilt at release */
-                int ix = arena_input_sx(in), iy = arena_input_sy(in);
-                q32 tilt = qlen2(Q(ix) / AIN_STICK_MAX, Q(iy) / AIN_STICK_MAX);
-                if (tilt > Q_ONE) tilt = Q_ONE;
-                if (tilt < TUNE_THROW_MIN_FRAC) tilt = TUNE_THROW_MIN_FRAC;
-                throw_bomb(s, pi, held, p->yaw,
-                           qmul(TUNE_THROW_SPEED, tilt), TUNE_THROW_UP);
+                /* single fixed arc along facing */
+                throw_bomb(s, pi, held, p->yaw, TUNE_THROW_SPEED, TUNE_THROW_UP);
             } else {
                 /* spread: forward fan, fixed short trajectory. Offsets in
                  * fixed order so a clamped spread stays centered. */
@@ -201,41 +198,24 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
         }
     }
 
-    /* set / kick (edge on bit 14): kick a settled bomb in front, else set.
-     * Kick wins; one press = one action. Ground-only, not while holding. */
+    /* set (edge on bit 14): lay a bomb at the ground under the player.
+     * Works mid-air (authentic: Hero speedruns lay bombs in midair). The
+     * setter gets grace (bounced = idx+1) so standing on it doesn't
+     * immediately walk-in kick it. Kicking = running into a settled bomb
+     * (see BSTATE_SETTLED in the bomb phase). */
     if (gameplay && p->state != PSTATE_TUMBLE && p->held_bomb == 0
-        && on_ground(p) && arena_input_set(in) && !arena_input_set(prev)) {
-        int kicked = 0;
-        for (int bi = 0; bi < ARENA_MAX_BOMBS; bi++) {     /* fixed order */
+        && arena_input_set(in) && !arena_input_set(prev)
+        && p->live_bombs < TUNE_MAX_LIVE_BOMBS) {
+        int bi = find_free_bomb(s);
+        if (bi >= 0) {
             ArenaBomb* b = &s->bombs[bi];
-            if (b->state != BSTATE_SETTLED) continue;
-            q32 dx = b->pos.x - p->pos.x, dz = b->pos.z - p->pos.z;
-            q32 dist = qlen2(dx, dz);
-            if (dist > TUNE_KICK_RANGE) continue;
-            if (dist >= TUNE_PLAYER_RADIUS) {   /* cone check unless underfoot */
-                int16_t rel = (int16_t)(uint16_t)(iatan2(dx, -dz) - p->yaw);
-                if (rel > TUNE_KICK_CONE || rel < -TUNE_KICK_CONE) continue;
-            }
-            b->state   = BSTATE_SLIDING;
-            b->pos.y   = 0;
-            b->vel.x   =  qmul(qsin(p->yaw), TUNE_KICK_SPEED);
-            b->vel.y   = 0;
-            b->vel.z   = -qmul(qcos(p->yaw), TUNE_KICK_SPEED);
-            b->bounced = (uint8_t)(pi + 1);     /* kicker grace, cleared on exit */
-            kicked = 1;
-            break;
-        }
-        if (!kicked && p->live_bombs < TUNE_MAX_LIVE_BOMBS) {
-            int bi = find_free_bomb(s);
-            if (bi >= 0) {
-                ArenaBomb* b = &s->bombs[bi];
-                memset(b, 0, sizeof(*b));
-                b->owner = (uint8_t)pi;
-                b->state = BSTATE_SETTLED;
-                b->fuse  = TUNE_FUSE_TICKS;
-                b->pos   = p->pos; b->pos.y = 0;
-                p->live_bombs++;
-            }
+            memset(b, 0, sizeof(*b));
+            b->owner   = (uint8_t)pi;
+            b->state   = BSTATE_SETTLED;
+            b->fuse    = TUNE_FUSE_TICKS;
+            b->pos     = p->pos; b->pos.y = 0;
+            b->bounced = (uint8_t)(pi + 1);     /* setter grace */
+            p->live_bombs++;
         }
     }
 
@@ -350,9 +330,10 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
                     b->vel.z = qmul(b->vel.z, TUNE_BOMB_H_DAMP);
                     b->bounced = 1;
                 } else {
-                    b->pos.y = 0;
-                    b->state = BSTATE_SETTLED;
-                    b->fuse  = TUNE_FUSE_TICKS;
+                    b->pos.y   = 0;
+                    b->state   = BSTATE_SETTLED;
+                    b->fuse    = TUNE_FUSE_TICKS;
+                    b->bounced = 0;   /* bounce flag done; field now = kick grace */
                 }
             }
             break;
@@ -401,10 +382,35 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
             }
             break;
         }
-        case BSTATE_SETTLED:
+        case BSTATE_SETTLED: {
+            /* walk-in kick: a moving grounded player touching the bomb sends
+             * it sliding along their facing. Setter grace (bounced = idx+1)
+             * holds until they step clear, so setting isn't an insta-kick. */
+            q32 touch = TUNE_PLAYER_RADIUS + TUNE_BOMB_RADIUS;
+            for (int pj = 0; pj < s->num_players; pj++) {   /* fixed order */
+                ArenaPlayer* p = &s->players[pj];
+                if (p->state == PSTATE_DEAD || p->state == PSTATE_TUMBLE) continue;
+                q32 dist = qlen2(b->pos.x - p->pos.x, b->pos.z - p->pos.z);
+                if (b->bounced == (uint8_t)(pj + 1)) {      /* setter grace */
+                    if (dist >= touch + Q(0.1)) b->bounced = 0;
+                    continue;
+                }
+                if (dist >= touch) continue;
+                if (p->pos.y > TUNE_PLAYER_HEIGHT / 2) continue;  /* jumped over */
+                if (qlen2(p->vel.x, p->vel.z) < TUNE_KICK_MIN_VEL) continue;
+                b->state   = BSTATE_SLIDING;
+                b->pos.y   = 0;
+                b->vel.x   =  qmul(qsin(p->yaw), TUNE_KICK_SPEED);
+                b->vel.y   = 0;
+                b->vel.z   = -qmul(qcos(p->yaw), TUNE_KICK_SPEED);
+                b->bounced = (uint8_t)(pj + 1);             /* kicker grace */
+                break;
+            }
+            if (b->state != BSTATE_SETTLED) break;
             if (b->fuse > 0) b->fuse--;
             if (b->fuse == 0) b->state = BSTATE_EXPLODING;
             break;
+        }
         default: break;
         }
     }
@@ -454,7 +460,9 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
             if (p->held_bomb) {
                 ArenaBomb* hb = &s->bombs[p->held_bomb - 1];
                 hb->state = BSTATE_SETTLED; hb->fuse = TUNE_FUSE_TICKS;
-                hb->pos = p->pos; hb->vel.x = hb->vel.y = hb->vel.z = 0;
+                hb->pos = p->pos; hb->pos.y = 0;
+                hb->vel.x = hb->vel.y = hb->vel.z = 0;
+                hb->bounced = (uint8_t)(pi + 1);   /* grace vs the hit player */
                 p->held_bomb = 0;
             }
             if (p->hp == 0) p->state = PSTATE_DEAD;

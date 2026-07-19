@@ -14,15 +14,18 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
 **A0 complete.** Headless deterministic arena sim in `src/arena/`, all tests
 green (`tests/test_determinism.c`): bit-identical replay, GekkoNet-style
 rollback stress, snapshot round-trip, liveness. Scripted-match hash pinned at
-`fb726383` (re-pinned 2026-07-19 with the bomb-mechanics correction —
+`da70b707` (re-pinned 2026-07-19 with the bomb-mechanics correction —
 `TUNE_VERSION` 2, first intentional gameplay change; previously `a55aa9b1`)
 — CI matrix on GitHub: https://github.com/dcmshi/bmhero-arena.
 
-**Bomb mechanics are Hero-authentic (2026-07-19).** Single-arc throw with
-stick-tilt distance, 4-bomb spread on ≥2s hold, set + kick (input bit 14;
-`BSTATE_SLIDING`; kicked bombs detonate on first contact — owner-recalled,
-verify in A1). Cap 6 live bombs. TDD'd in `tests/test_bomb_mechanics.c`;
-design doc §2 records the verified mechanics and sources.
+**Bomb mechanics are Hero-authentic (2026-07-19).** Fixed-arc throw (no
+stick/momentum modifier — decomp-verified in `bmhero src/code/69AA0.c`:
+speed 35 / pitch 80° / facing only; kick = flat launch at speed 30), 4-bomb
+spread on ≥2s hold, set via input bit 14 (works mid-air), **walk-in kick**
+(run into any settled bomb; setter immune until stepped clear;
+`BSTATE_SLIDING`; detonates on first contact — owner-recalled, verify in
+A1). Cap 6 live bombs. TDD'd in `tests/test_bomb_mechanics.c`; design doc
+§2 records mechanics, sources, and decomp anchors for A1 calibration.
 
 **SDL debug viewer complete (2026-07-19).** `tools/viewer/` (floats OK there;
 spec + post-playtest addendum in `docs/superpowers/specs/`): camera modes on

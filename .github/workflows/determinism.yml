@@ -46,4 +46,4 @@ jobs:
           ${{ matrix.cc }} -std=c11 ${{ matrix.opt }} -I. -o hash_check hash_main.c src/arena/arena_sim.c
           h=$(./hash_check)
           echo "hash: $h"
-          test "$h" = "fb726383"
+          test "$h" = "da70b707"

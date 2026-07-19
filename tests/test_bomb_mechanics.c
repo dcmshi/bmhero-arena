@@ -31,33 +31,39 @@ static q32 bomb_xz_dist(const ArenaBomb* b, Vec3q from) {
     return qlen2(b->pos.x - from.x, b->pos.z - from.z);
 }
 
-static void test_throw_tilt(void) {
-    /* Both throws aim +X from spawn (-4.5,-4.5): ~10 clear units along
-     * z=-4.5 (walls at +/-6, pillars only within |z|<=2.5), so neither
-     * trajectory clips geometry and distances compare cleanly. */
+static void test_throw_fixed_arc(void) {
+    /* Decomp-verified (bmhero 69AA0.c): the throw is a fixed launch from
+     * facing + constants — stick tilt at release must NOT change where the
+     * bomb lands. Both throws aim +X from spawn (-4.5,-4.5): ~10 clear
+     * units along z=-4.5. Player is stopped before release in both cases;
+     * the only difference is the stick state on the release tick. */
     ArenaState s;
-    /* neutral-stick release = short lob */
+    /* release with neutral stick */
     start2(&s);
-    Vec3q origin = s.players[0].pos;
     run(&s, arena_input_pack(0, 0, 0, 1, 0), 5);      /* grab */
     run(&s, arena_input_pack(31, 0, 0, 1, 0), 3);     /* face +X while holding */
-    run(&s, arena_input_pack(0, 0, 0, 1, 0), 2);      /* stick back to neutral
-                                                         (deadzone keeps yaw) */
-    run(&s, NEUTRAL, 120);                            /* release neutral: lob */
-    CHECK(s.bombs[0].state == BSTATE_SETTLED, "lob settled");
-    q32 lob = bomb_xz_dist(&s.bombs[0], origin);
+    run(&s, arena_input_pack(0, 0, 0, 1, 0), 30);     /* stop (friction) */
+    Vec3q origin_a = s.players[0].pos;
+    run(&s, NEUTRAL, 120);                            /* release, fly, land */
+    CHECK(s.bombs[0].state == BSTATE_SETTLED, "throw A settled");
+    q32 dist_a = bomb_xz_dist(&s.bombs[0], origin_a);
 
-    /* full-tilt release = farther throw */
+    /* release with the stick held full forward */
     start2(&s);
-    origin = s.players[0].pos;
-    run(&s, arena_input_pack(0, 0, 0, 1, 0), 5);      /* grab */
-    run(&s, arena_input_pack(31, 0, 0, 1, 0), 3);     /* face +X, full tilt */
-    run(&s, arena_input_pack(31, 0, 0, 0, 0), 1);     /* release at full tilt */
+    run(&s, arena_input_pack(0, 0, 0, 1, 0), 5);
+    run(&s, arena_input_pack(31, 0, 0, 1, 0), 3);
+    run(&s, arena_input_pack(0, 0, 0, 1, 0), 30);
+    Vec3q origin_b = s.players[0].pos;
+    run(&s, arena_input_pack(31, 0, 0, 0, 0), 1);     /* release, stick full */
     run(&s, NEUTRAL, 120);
-    CHECK(s.bombs[0].state == BSTATE_SETTLED, "throw settled");
-    q32 thrown = bomb_xz_dist(&s.bombs[0], origin);
-    CHECK(thrown > lob + Q(0.5),
-          "full tilt lands farther than neutral lob (thrown=%d lob=%d)", thrown, lob);
+    CHECK(s.bombs[0].state == BSTATE_SETTLED, "throw B settled");
+    q32 dist_b = bomb_xz_dist(&s.bombs[0], origin_b);
+
+    /* identical launch: stick input cannot alter the arc. Allow a few Q of
+     * slack for the 1 walking tick before B's bomb leaves the hand. */
+    CHECK(qabs(dist_a - dist_b) < Q(0.15),
+          "fixed arc: stick at release does not change distance (a=%d b=%d)",
+          dist_a, dist_b);
 }
 
 static void test_spread(void) {
@@ -99,10 +105,10 @@ static void test_spread_cap(void) {
     CHECK(airborne == 2, "second spread clamped to 2 bombs (got %d)", airborne);
 }
 
-static void test_set_and_kick_wall(void) {
+static void test_set_and_walkin_kick_wall(void) {
     ArenaState s;
     start2(&s);
-    /* set: bit-14 edge with nothing nearby places a bomb at the feet */
+    /* set: bit-14 edge places a bomb at the feet */
     run(&s, arena_input_pack(0, 0, 0, 0, 1), 1);
     run(&s, NEUTRAL, 1);
     int bi = -1;
@@ -114,10 +120,15 @@ static void test_set_and_kick_wall(void) {
     CHECK(bomb_xz_dist(&s.bombs[bi], s.players[0].pos) < Q(0.2),
           "bomb set at the feet");
 
-    /* face -Z (wall 1.5 units away at spawn), then kick */
-    run(&s, arena_input_pack(0, -31, 0, 0, 0), 1);    /* turn */
-    run(&s, arena_input_pack(0, 0, 0, 0, 1), 1);      /* kick press */
-    CHECK(s.bombs[bi].state == BSTATE_SLIDING, "second set-press kicks");
+    /* setter standing on it must NOT kick it (grace until stepped clear) */
+    run(&s, NEUTRAL, 30);
+    CHECK(s.bombs[bi].state == BSTATE_SETTLED, "no insta-kick while standing on it");
+
+    /* step away (+Z), then run back (-Z) into it: walk-in kick toward wall */
+    run(&s, arena_input_pack(0, 31, 0, 0, 0), 20);    /* walk +Z, clears grace */
+    run(&s, arena_input_pack(0, -31, 0, 0, 0), 30);   /* run -Z back into bomb */
+    CHECK(s.bombs[bi].state == BSTATE_SLIDING || s.bombs[bi].state == BSTATE_FREE,
+          "walk-in kicks the bomb (state=%d)", s.bombs[bi].state);
     /* slides into the -Z boundary wall and detonates on contact */
     run(&s, NEUTRAL, 40);
     CHECK(s.bombs[bi].state == BSTATE_FREE, "kicked bomb detonated at wall");
@@ -127,15 +138,16 @@ static void test_set_and_kick_wall(void) {
 static void test_kick_hits_player(void) {
     ArenaState s;
     start4(&s);                       /* P3 spawns at (+4.5, -4.5) */
-    run(&s, arena_input_pack(0, 0, 0, 0, 1), 1);      /* set */
-    run(&s, arena_input_pack(31, 0, 0, 0, 0), 1);     /* face +X toward P3 */
-    run(&s, arena_input_pack(0, 0, 0, 0, 1), 1);      /* kick */
+    run(&s, arena_input_pack(0, 0, 0, 0, 1), 1);      /* set at the feet */
+    run(&s, NEUTRAL, 1);
+    run(&s, arena_input_pack(-31, 0, 0, 0, 0), 20);   /* step away -X */
+    run(&s, arena_input_pack(31, 0, 0, 0, 0), 30);    /* run +X into the bomb */
     int bi = -1;
     for (int i = 0; i < ARENA_MAX_BOMBS; i++)
         if (s.bombs[i].state == BSTATE_SLIDING) { bi = i; break; }
     CHECK(bi >= 0, "bomb sliding toward P3");
     if (bi < 0) return;
-    run(&s, NEUTRAL, 80);             /* 9 units at TUNE_KICK_SPEED ~= 65 ticks */
+    run(&s, NEUTRAL, 90);             /* ~9 units at TUNE_KICK_SPEED */
     CHECK(s.bombs[bi].state == BSTATE_FREE, "detonated on player contact");
     CHECK(s.players[3].hp < TUNE_START_HP, "P3 took blast damage");
 }
@@ -144,15 +156,32 @@ static void test_fuse_pops_mid_slide(void) {
     ArenaState s;
     start2(&s);
     run(&s, arena_input_pack(0, 0, 0, 0, 1), 1);      /* set */
-    run(&s, NEUTRAL, TUNE_FUSE_TICKS - 10);           /* burn fuse down */
-    run(&s, arena_input_pack(31, 0, 0, 0, 0), 1);     /* face +X (10 units clear) */
-    run(&s, arena_input_pack(0, 0, 0, 0, 1), 1);      /* kick */
-    run(&s, NEUTRAL, 20);
-    /* far from any obstacle after ~2.8 units: only the fuse can have popped */
+    run(&s, NEUTRAL, 89);                             /* burn most of the fuse */
+    run(&s, arena_input_pack(-31, 0, 0, 0, 0), 20);   /* step away -X */
+    run(&s, arena_input_pack(31, 0, 0, 0, 0), 30);    /* run +X into the bomb:
+                                                         kick with ~10 fuse left */
+    run(&s, NEUTRAL, 30);
+    /* +X has ~10 clear units; only the fuse can have popped it */
     int sliding = 0;
     for (int i = 0; i < ARENA_MAX_BOMBS; i++)
         if (s.bombs[i].state == BSTATE_SLIDING) sliding++;
     CHECK(sliding == 0, "fuse detonates a sliding bomb");
+}
+
+static void test_set_works_midair(void) {
+    ArenaState s;
+    start2(&s);
+    /* jump, then set at the top of the arc */
+    run(&s, arena_input_pack(0, 0, 1, 0, 0), 2);      /* jump press */
+    run(&s, arena_input_pack(0, 0, 0, 0, 0), 8);      /* rising */
+    CHECK(s.players[0].pos.y > 0, "player is airborne");
+    run(&s, arena_input_pack(0, 0, 0, 0, 1), 1);      /* set mid-air */
+    int bi = -1;
+    for (int i = 0; i < ARENA_MAX_BOMBS; i++)
+        if (s.bombs[i].state == BSTATE_SETTLED) { bi = i; break; }
+    CHECK(bi >= 0, "mid-air set places a bomb");
+    if (bi >= 0)
+        CHECK(s.bombs[bi].pos.y == 0, "bomb lands on the ground below");
 }
 
 static void test_set_ignored_while_holding(void) {
@@ -168,12 +197,13 @@ static void test_set_ignored_while_holding(void) {
 }
 
 int main(void) {
-    test_throw_tilt();
+    test_throw_fixed_arc();
     test_spread();
     test_spread_cap();
-    test_set_and_kick_wall();
+    test_set_and_walkin_kick_wall();
     test_kick_hits_player();
     test_fuse_pops_mid_slide();
+    test_set_works_midair();
     test_set_ignored_while_holding();
     if (failures) { printf("%d FAILURES\n", failures); return 1; }
     printf("bomb_mechanics: ALL TESTS PASSED\n");

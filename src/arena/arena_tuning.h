@@ -21,17 +21,19 @@
 #define TUNE_PLAYER_RADIUS   Q(0.35)
 #define TUNE_PLAYER_HEIGHT   Q(1.0)
 
-/* -- bombs -- TODO(feel): verify every value in A1 (throw arc from decomp;
- * kick-vs-wall detonation is owner-recalled, confirm in the recomp) */
-#define TUNE_THROW_SPEED     Q(0.18)    /* single throw, full stick tilt */
+/* -- bombs -- TODO(feel): calibrate against decomp bmhero src/code/69AA0.c
+ * during A1. Verified there: throw is a FIXED launch (pitch 80deg, speed 35,
+ * dir = facing; no stick/momentum term), kicked/rolled bombs go flat at
+ * speed 30 (throw:kick = 7:6), bomb gravity 2.0/frame, terminal -48 (30Hz
+ * world units — unit scale needs the player run-speed constant).
+ * Kick-vs-wall detonation still owner-recalled; confirm in the recomp. */
+#define TUNE_THROW_SPEED     Q(0.18)    /* fixed arc, forward component */
 #define TUNE_THROW_UP        Q(0.12)
-#define TUNE_THROW_MIN_FRAC  Q(0.35)    /* neutral-stick lob = this fraction */
 #define TUNE_SPREAD_TICKS    120        /* hold >= this arms the 4-bomb spread */
-#define TUNE_SPREAD_SPEED    Q(0.11)    /* spread: fixed shorter trajectory */
-#define TUNE_SPREAD_UP       Q(0.10)
+#define TUNE_SPREAD_SPEED    Q(0.085)   /* spread: fixed shorter trajectory */
+#define TUNE_SPREAD_UP       Q(0.09)
 #define TUNE_KICK_SPEED      Q(0.14)
-#define TUNE_KICK_RANGE      Q(0.9)     /* settled bomb within this can be kicked */
-#define TUNE_KICK_CONE       0x2000     /* +/-45 deg of facing, binary angle */
+#define TUNE_KICK_MIN_VEL    Q(0.02)    /* walk-in kick needs real movement */
 #define TUNE_BOMB_RADIUS     Q(0.30)
 #define TUNE_BOMB_RESTITUTION Q(0.40)   /* single bounce */
 #define TUNE_BOMB_H_DAMP     Q(0.55)    /* horizontal damping on bounce */

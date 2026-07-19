@@ -18,17 +18,21 @@
 - **Match:** 2–4 players, last-bomber-standing rounds; first to 3 round wins. Round timer 2:00 → sudden death (arena walls close in / blast radius creeps up).
 - **Health:** 2 hits per round (Hero-style heart) — a blast hit deals 1 damage + knockback; brief post-hit invulnerability (60 ticks). 0 HP = out for the round (becomes spectator-ghost).
 - **Bombs:** press B to pull one out (can run/jump while holding); release =
-  single-arc throw in facing direction, distance scaling with stick tilt at
-  release (neutral stick = short lob). Hold ≥ ~2s to arm the **4-bomb
-  spread** — a forward fan (±5°, ±15°) at a fixed shorter trajectory. A
-  separate **set** button lays a bomb at the feet; pressing it with a
-  settled bomb in front (any owner) **kicks** it — kicked bombs slide flat
-  and **detonate on first contact** (wall, pillar, player, bomb) or on fuse
-  expiry *(kick-vs-wall detonation owner-recalled; verify in A1)*. Thrown
-  bombs bounce once, then sit with a fuse (~150 ticks); direct hit on a
-  player detonates on impact. Max 6 live bombs per player. *(Mechanics
-  verified 2026-07-19 vs GameFAQs/StrategyWiki/Bomberman Wiki — replaces
-  the earlier invented charge-tier throw.)*
+  a **fixed launch arc** along facing — no stick or momentum modifier
+  (decomp-verified, `bmhero src/code/69AA0.c`: velocity = speed 35 × pitch
+  80° × facing; jump-throws travel farther via release *height* only).
+  Hold ≥ ~2s to arm the **4-bomb spread** — a forward fan (±5°, ±15°) at a
+  fixed shorter trajectory. **Set** (own button, works mid-air — bomb lands
+  at the ground point below; speedrun-verified authentic) lays a bomb;
+  **running into any settled bomb kicks it** (setter is immune until they
+  step clear) — kicked bombs slide flat (decomp: pitch-0 launch at speed
+  30, i.e. kick ≈ 6/7 of throw speed) and **detonate on first contact**
+  (wall, pillar, player, bomb) or on fuse expiry *(kick-vs-wall detonation
+  owner-recalled; verify in A1)*. Thrown bombs bounce once, then sit with a
+  fuse (~150 ticks); direct hit on a player detonates on impact. Max 6 live
+  bombs per player. *(Mechanics verified 2026-07-19 vs GameFAQs/
+  StrategyWiki/Bomberman Wiki + decomp source — replaces the earlier
+  invented charge-tier throw.)*
 - **Blasts:** spherical, radius R for ~20 ticks; chain-detonate other bombs; blasts hurt the owner too.
 - **Movement:** analog run (camera-relative), single jump, air control, blast knockback launches with brief tumble state; arena has pits/hazards in some layouts (fall = 1 damage + respawn on platform).
 - **No powerups in v1.** Items (fire-up, bomb-up, speed, heart) are v2 — they slot into the state spec (§3) without layout changes.
