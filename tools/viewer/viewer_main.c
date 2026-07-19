@@ -35,23 +35,25 @@ static int keyboard_player(const Pads* p) {
 
 static ArenaInput read_input(const Pads* pads, int player, const ViewerCam* cam) {
     float ix = 0, iy = 0;
-    int jump = 0, bomb = 0;
+    int jump = 0, bomb = 0, set = 0;
     if (pads->pad[player]) {
         SDL_Gamepad* gp = pads->pad[player];
         ix =  (float)SDL_GetGamepadAxis(gp, SDL_GAMEPAD_AXIS_LEFTX) / 32767.0f;
         iy = -(float)SDL_GetGamepadAxis(gp, SDL_GAMEPAD_AXIS_LEFTY) / 32767.0f;
         jump = SDL_GetGamepadButton(gp, SDL_GAMEPAD_BUTTON_SOUTH);
         bomb = SDL_GetGamepadButton(gp, SDL_GAMEPAD_BUTTON_WEST);
+        set  = SDL_GetGamepadButton(gp, SDL_GAMEPAD_BUTTON_EAST);
     } else if (player == keyboard_player(pads)) {
         const bool* k = SDL_GetKeyboardState(NULL);
         ix = (float)((k[SDL_SCANCODE_D] ? 1 : 0) - (k[SDL_SCANCODE_A] ? 1 : 0));
         iy = (float)((k[SDL_SCANCODE_W] ? 1 : 0) - (k[SDL_SCANCODE_S] ? 1 : 0));
         jump = k[SDL_SCANCODE_SPACE] ? 1 : 0;
         bomb = k[SDL_SCANCODE_LSHIFT] ? 1 : 0;
+        set  = k[SDL_SCANCODE_E] ? 1 : 0;
     }
     int sx, sy;
     vcam_stick_to_world(cam, ix, iy, &sx, &sy);
-    return arena_input_pack(sx, sy, jump, bomb);
+    return arena_input_pack(sx, sy, jump, bomb, set);
 }
 
 int main(int argc, char** argv) {

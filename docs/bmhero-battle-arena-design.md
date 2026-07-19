@@ -17,7 +17,28 @@
 
 - **Match:** 2–4 players, last-bomber-standing rounds; first to 3 round wins. Round timer 2:00 → sudden death (arena walls close in / blast radius creeps up).
 - **Health:** 2 hits per round (Hero-style heart) — a blast hit deals 1 damage + knockback; brief post-hit invulnerability (60 ticks). 0 HP = out for the round (becomes spectator-ghost).
-- **Bombs:** hold to grab, release to throw in facing direction with Hero's arc; tap = short lob, hold = pumped/full throw (2 charge tiers, like Hero's throw). Bombs bounce once, then sit with a fuse (~150 ticks); direct hit on a player detonates on impact. Max 2 live bombs per player (item-upgradable later).
+- **Bombs:** press B to pull one out (can run/jump while holding); release =
+  a **fixed launch arc** along facing — no stick or momentum modifier
+  (decomp-verified, `bmhero src/code/69AA0.c`: velocity = speed 35 × pitch
+  80° × facing; jump-throws travel farther via release *height* only).
+  Hold ≥ ~2s to arm the **multi-bomb spread** — ROM-extracted (parameter
+  table `D_8010C7E4`, ROM `0xFED04`, consumed by `69AA0.c`
+  `func_8007A488`/`func_8007A620`): spread bombs launch at **speed 28,
+  pitch 30°** (vs the single throw's 35 @ 80° — flatter and quicker), with
+  progressive fan rows by count: 1 → {0°}, 2 → {±10°}, 3 → {0°, ±20°},
+  **4 → {±10°, ±30°}** (no center bomb in the 4-fan). An alternate table
+  bank (speed 60, half angles) appears to be a powerup variant — v2 items.
+  **Set** (own button, works mid-air — bomb lands
+  at the ground point below; speedrun-verified authentic) lays a bomb;
+  **running into any settled bomb kicks it** (setter is immune until they
+  step clear) — kicked bombs slide flat (decomp: pitch-0 launch at speed
+  30, i.e. kick ≈ 6/7 of throw speed) and **detonate on first contact**
+  (wall, pillar, player, bomb) or on fuse expiry *(kick-vs-wall detonation
+  owner-recalled; verify in A1)*. Thrown bombs bounce once, then sit with a
+  fuse (~150 ticks); direct hit on a player detonates on impact. Max 6 live
+  bombs per player. *(Mechanics verified 2026-07-19 vs GameFAQs/
+  StrategyWiki/Bomberman Wiki + decomp source — replaces the earlier
+  invented charge-tier throw.)*
 - **Blasts:** spherical, radius R for ~20 ticks; chain-detonate other bombs; blasts hurt the owner too.
 - **Movement:** analog run (camera-relative), single jump, air control, blast knockback launches with brief tumble state; arena has pits/hazards in some layouts (fall = 1 damage + respawn on platform).
 - **No powerups in v1.** Items (fire-up, bomb-up, speed, heart) are v2 — they slot into the state spec (§3) without layout changes.
@@ -37,7 +58,7 @@ typedef struct { s32 x, y, z; } Vec3q;            // 12B, Q20.12
 typedef struct {                                   // 40B (asserted)
     Vec3q pos, vel;                                // 24B
     u16   yaw;  u8 state;  u8 hp;                  // IDLE/RUN/JUMP/TUMBLE/DEAD
-    u16   timer;                                   // charge / tumble+invuln, per state
+    u16   timer;                                   // bomb-hold / tumble+invuln, per state
     u8    stocks_won; u8 held_bomb;                // held_bomb: bomb index+1, 0=none
     u8    live_bombs; u8 pad0;
     u16   last_input;                              // previous tick (edge detection)
@@ -84,7 +105,7 @@ typedef struct {                                   // 944B total (asserted)
 
 ## 5. Feel: transcribing Hero's constants
 
-The decomp is the reference manual, not a dependency. Process: locate the player movement update in [bomberhackers/bmhero](https://github.com/Bomberhackers/bmhero) (start from `gPlayerObject` uses and the object-update dispatch over `gObjects[207]`), extract run speed, acceleration, jump impulse, gravity, throw velocities per charge tier, blast radius/knockback — convert each float/fixed constant to Q20.12, and keep them in one `arena_tuning.h` table (versioned, hashed into the handshake). Where the decomp still has unmatched asm for a needed function, measure empirically in the recomp (record inputs, log `gPlayerObject` positions via a debug patch, fit constants). Tuning divergence from Hero is then a deliberate per-constant choice, not an accident.
+The decomp is the reference manual, not a dependency. Process: locate the player movement update in [bomberhackers/bmhero](https://github.com/Bomberhackers/bmhero) (start from `gPlayerObject` uses and the object-update dispatch over `gObjects[207]`), extract run speed, acceleration, jump impulse, gravity, throw arc velocity (plus spread fan angles/arm time and kick speed/range), blast radius/knockback — convert each float/fixed constant to Q20.12, and keep them in one `arena_tuning.h` table (versioned, hashed into the handshake). Where the decomp still has unmatched asm for a needed function, measure empirically in the recomp (record inputs, log `gPlayerObject` positions via a debug patch, fit constants). Tuning divergence from Hero is then a deliberate per-constant choice, not an accident.
 
 ## 6. Netcode integration (GekkoNet)
 

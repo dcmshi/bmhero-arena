@@ -100,6 +100,20 @@ static void detonate(ArenaState* s, int bi) {
     b->state = BSTATE_FREE;
 }
 
+/* Launch bomb b from player pi's hands along binary-angle dir.
+ * Fixed launch — no stick or momentum term (decomp 69AA0.c: velocity is
+ * moveSpeed x pitch x facing only; jump-throws go farther via HEIGHT). */
+static void throw_bomb(ArenaState* s, int pi, ArenaBomb* b, uint16_t dir,
+                       q32 fwd, q32 up) {
+    const ArenaPlayer* p = &s->players[pi];
+    b->pos = p->pos; b->pos.y += TUNE_PLAYER_HEIGHT;
+    b->vel.x =  qmul(qsin(dir), fwd);
+    b->vel.z = -qmul(qcos(dir), fwd);
+    b->vel.y = up;
+    b->state   = BSTATE_AIRBORNE;
+    b->bounced = 0;
+}
+
 /* --------------------------------------------------------- player tick */
 
 static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g,
@@ -139,7 +153,7 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
         p->state = PSTATE_JUMP;
     }
 
-    /* bomb grab / charge / throw */
+    /* bomb grab / hold / throw — single arc, or 4-bomb spread on long hold */
     if (gameplay && p->state != PSTATE_TUMBLE) {
         int bomb_now = arena_input_bomb(in), bomb_prev = arena_input_bomb(prev);
         if (bomb_now && !bomb_prev && p->held_bomb == 0
@@ -152,22 +166,70 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
                 b->state = BSTATE_HELD;
                 p->held_bomb = (uint8_t)(bi + 1);
                 p->live_bombs++;
-                p->timer = 0;                       /* charge counter */
+                p->timer = 0;                       /* hold counter */
             }
         } else if (bomb_now && p->held_bomb) {
-            if (p->timer < 0xFFFF) p->timer++;      /* charging */
+            if (p->timer < 0xFFFF) p->timer++;      /* holding (spread arms) */
         } else if (!bomb_now && bomb_prev && p->held_bomb) {
-            ArenaBomb* b = &s->bombs[p->held_bomb - 1];
-            int tier2 = p->timer >= TUNE_CHARGE_TICKS;
-            q32 fwd = tier2 ? TUNE_THROW_SPEED_2 : TUNE_THROW_SPEED_1;
-            q32 up  = tier2 ? TUNE_THROW_UP_2    : TUNE_THROW_UP_1;
-            b->pos = p->pos; b->pos.y += TUNE_PLAYER_HEIGHT;
-            b->vel.x = qmul(qsin(p->yaw), fwd) + p->vel.x;
-            b->vel.z = -qmul(qcos(p->yaw), fwd) + p->vel.z;
-            b->vel.y = up;
-            b->state = BSTATE_AIRBORNE;
+            ArenaBomb* held = &s->bombs[p->held_bomb - 1];
+            if (p->timer < TUNE_SPREAD_TICKS) {
+                /* single fixed arc along facing */
+                throw_bomb(s, pi, held, p->yaw, TUNE_THROW_SPEED, TUNE_THROW_UP);
+            } else {
+                /* spread: forward fan with Hero's ROM-extracted angle rows
+                 * (D_8010C7E4): n=1 {0}, n=2 {-10,+10}, n=3 {0,-20,+20},
+                 * n=4 {-10,+10,-30,+30} degrees. A cap/slot-clamped spread
+                 * uses the authentic row for its actual count. */
+                static const int16_t fan[4][4] = {
+                    {       0,      0,       0,      0 },
+                    { -0x071C, 0x071C,       0,      0 },
+                    {       0, -0xE38,   0xE38,      0 },
+                    { -0x071C, 0x071C, -0x1555, 0x1555 },
+                };
+                int free_slots = 0;
+                for (int fi = 0; fi < ARENA_MAX_BOMBS; fi++)
+                    if (s->bombs[fi].state == BSTATE_FREE) free_slots++;
+                int extras = TUNE_MAX_LIVE_BOMBS - p->live_bombs;
+                if (extras > free_slots) extras = free_slots;
+                if (extras > 3) extras = 3;
+                if (extras < 0) extras = 0;
+                const int16_t* row = fan[extras];       /* n = extras + 1 */
+                throw_bomb(s, pi, held, (uint16_t)(p->yaw + (uint16_t)row[0]),
+                           TUNE_SPREAD_SPEED, TUNE_SPREAD_UP);
+                for (int k = 1; k <= extras; k++) {
+                    int bi = find_free_bomb(s);
+                    if (bi < 0) break;
+                    ArenaBomb* nb = &s->bombs[bi];
+                    memset(nb, 0, sizeof(*nb));
+                    nb->owner = (uint8_t)pi;
+                    p->live_bombs++;
+                    throw_bomb(s, pi, nb, (uint16_t)(p->yaw + (uint16_t)row[k]),
+                               TUNE_SPREAD_SPEED, TUNE_SPREAD_UP);
+                }
+            }
             p->held_bomb = 0;
             p->timer = 0;
+        }
+    }
+
+    /* set (edge on bit 14): lay a bomb at the ground under the player.
+     * Works mid-air (authentic: Hero speedruns lay bombs in midair). The
+     * setter gets grace (bounced = idx+1) so standing on it doesn't
+     * immediately walk-in kick it. Kicking = running into a settled bomb
+     * (see BSTATE_SETTLED in the bomb phase). */
+    if (gameplay && p->state != PSTATE_TUMBLE && p->held_bomb == 0
+        && arena_input_set(in) && !arena_input_set(prev)
+        && p->live_bombs < TUNE_MAX_LIVE_BOMBS) {
+        int bi = find_free_bomb(s);
+        if (bi >= 0) {
+            ArenaBomb* b = &s->bombs[bi];
+            memset(b, 0, sizeof(*b));
+            b->owner   = (uint8_t)pi;
+            b->state   = BSTATE_SETTLED;
+            b->fuse    = TUNE_FUSE_TICKS;
+            b->pos     = p->pos; b->pos.y = 0;
+            b->bounced = (uint8_t)(pi + 1);     /* setter grace */
+            p->live_bombs++;
         }
     }
 
@@ -282,17 +344,87 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
                     b->vel.z = qmul(b->vel.z, TUNE_BOMB_H_DAMP);
                     b->bounced = 1;
                 } else {
-                    b->pos.y = 0;
-                    b->state = BSTATE_SETTLED;
-                    b->fuse  = TUNE_FUSE_TICKS;
+                    b->pos.y   = 0;
+                    b->state   = BSTATE_SETTLED;
+                    b->fuse    = TUNE_FUSE_TICKS;
+                    b->bounced = 0;   /* bounce flag done; field now = kick grace */
                 }
             }
             break;
         }
-        case BSTATE_SETTLED:
+        case BSTATE_SLIDING: {
+            b->pos.x += b->vel.x; b->pos.z += b->vel.z;
+            /* players: contact detonates (kicker skipped until clear) */
+            for (int pj = 0; pj < s->num_players; pj++) {
+                const ArenaPlayer* p = &s->players[pj];
+                if (p->state == PSTATE_DEAD) continue;
+                if (p->pos.y > 2 * TUNE_BOMB_RADIUS) continue;   /* jumped over */
+                q32 dist = qlen2(b->pos.x - p->pos.x, b->pos.z - p->pos.z);
+                q32 touch = TUNE_PLAYER_RADIUS + TUNE_BOMB_RADIUS;
+                if (b->bounced == (uint8_t)(pj + 1)) {           /* kicker grace */
+                    if (dist >= touch + Q(0.1)) b->bounced = 0;
+                    continue;
+                }
+                if (dist < touch) { b->state = BSTATE_EXPLODING; break; }
+            }
+            if (b->state != BSTATE_SLIDING) break;
+            /* other live ground bombs: contact detonates (chain) */
+            for (int bj = 0; bj < ARENA_MAX_BOMBS; bj++) {
+                const ArenaBomb* ob = &s->bombs[bj];
+                if (bj == i) continue;
+                if (ob->state != BSTATE_SETTLED && ob->state != BSTATE_SLIDING)
+                    continue;
+                if (qlen2(b->pos.x - ob->pos.x, b->pos.z - ob->pos.z)
+                    < 2 * TUNE_BOMB_RADIUS) {
+                    b->state = BSTATE_EXPLODING;
+                    break;
+                }
+            }
+            if (b->state != BSTATE_SLIDING) break;
+            /* walls / pillars: any pushback = contact = detonate */
+            {
+                Vec3q pre_p = b->pos, pre_v = b->vel;
+                collide_static(&b->pos, &b->vel, TUNE_BOMB_RADIUS, g, wall_extent);
+                if (b->pos.x != pre_p.x || b->pos.z != pre_p.z
+                    || b->vel.x != pre_v.x || b->vel.z != pre_v.z)
+                    b->state = BSTATE_EXPLODING;
+            }
+            /* fuse keeps burning while sliding */
+            if (b->state == BSTATE_SLIDING) {
+                if (b->fuse > 0) b->fuse--;
+                if (b->fuse == 0) b->state = BSTATE_EXPLODING;
+            }
+            break;
+        }
+        case BSTATE_SETTLED: {
+            /* walk-in kick: a moving grounded player touching the bomb sends
+             * it sliding along their facing. Setter grace (bounced = idx+1)
+             * holds until they step clear, so setting isn't an insta-kick. */
+            q32 touch = TUNE_PLAYER_RADIUS + TUNE_BOMB_RADIUS;
+            for (int pj = 0; pj < s->num_players; pj++) {   /* fixed order */
+                ArenaPlayer* p = &s->players[pj];
+                if (p->state == PSTATE_DEAD || p->state == PSTATE_TUMBLE) continue;
+                q32 dist = qlen2(b->pos.x - p->pos.x, b->pos.z - p->pos.z);
+                if (b->bounced == (uint8_t)(pj + 1)) {      /* setter grace */
+                    if (dist >= touch + Q(0.1)) b->bounced = 0;
+                    continue;
+                }
+                if (dist >= touch) continue;
+                if (p->pos.y > TUNE_PLAYER_HEIGHT / 2) continue;  /* jumped over */
+                if (qlen2(p->vel.x, p->vel.z) < TUNE_KICK_MIN_VEL) continue;
+                b->state   = BSTATE_SLIDING;
+                b->pos.y   = 0;
+                b->vel.x   =  qmul(qsin(p->yaw), TUNE_KICK_SPEED);
+                b->vel.y   = 0;
+                b->vel.z   = -qmul(qcos(p->yaw), TUNE_KICK_SPEED);
+                b->bounced = (uint8_t)(pj + 1);             /* kicker grace */
+                break;
+            }
+            if (b->state != BSTATE_SETTLED) break;
             if (b->fuse > 0) b->fuse--;
             if (b->fuse == 0) b->state = BSTATE_EXPLODING;
             break;
+        }
         default: break;
         }
     }
@@ -311,7 +443,8 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
         /* chain-detonate bombs in radius (next pass picks up EXPLODING) */
         for (int bi = 0; bi < ARENA_MAX_BOMBS; bi++) {
             ArenaBomb* b = &s->bombs[bi];
-            if (b->state != BSTATE_SETTLED && b->state != BSTATE_AIRBORNE) continue;
+            if (b->state != BSTATE_SETTLED && b->state != BSTATE_AIRBORNE
+                && b->state != BSTATE_SLIDING) continue;
             Vec3q d = { b->pos.x - bl->center.x, b->pos.y - bl->center.y,
                         b->pos.z - bl->center.z };
             if (qlen3(d) < radius + TUNE_BOMB_RADIUS) b->state = BSTATE_EXPLODING;
@@ -341,7 +474,9 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
             if (p->held_bomb) {
                 ArenaBomb* hb = &s->bombs[p->held_bomb - 1];
                 hb->state = BSTATE_SETTLED; hb->fuse = TUNE_FUSE_TICKS;
-                hb->pos = p->pos; hb->vel.x = hb->vel.y = hb->vel.z = 0;
+                hb->pos = p->pos; hb->pos.y = 0;
+                hb->vel.x = hb->vel.y = hb->vel.z = 0;
+                hb->bounced = (uint8_t)(pi + 1);   /* grace vs the hit player */
                 p->held_bomb = 0;
             }
             if (p->hp == 0) p->state = PSTATE_DEAD;

@@ -21,17 +21,30 @@
 #define TUNE_PLAYER_RADIUS   Q(0.35)
 #define TUNE_PLAYER_HEIGHT   Q(1.0)
 
-/* -- bombs -- TODO(feel): throw arcs from decomp bomb code */
-#define TUNE_THROW_SPEED_1   Q(0.12)    /* tap / short lob */
-#define TUNE_THROW_SPEED_2   Q(0.22)    /* charged */
-#define TUNE_THROW_UP_1      Q(0.10)
-#define TUNE_THROW_UP_2      Q(0.14)
-#define TUNE_CHARGE_TICKS    24         /* hold >= this = tier 2 */
+/* -- bombs -- TODO(feel): calibrate against decomp bmhero src/code/69AA0.c
+ * during A1. Verified there: throw is a FIXED launch (pitch 80deg, speed 35,
+ * dir = facing; no stick/momentum term), kicked/rolled bombs go flat at
+ * speed 30 (throw:kick = 7:6), bomb gravity 2.0/frame, terminal -48 (30Hz
+ * world units — unit scale needs the player run-speed constant).
+ * Kick-vs-wall detonation still owner-recalled; confirm in the recomp. */
+#define TUNE_THROW_SPEED     Q(0.18)    /* fixed arc, forward component */
+#define TUNE_THROW_UP        Q(0.12)
+#define TUNE_SPREAD_TICKS    120        /* hold >= this arms the 4-bomb spread */
+/* Spread launch, ROM-extracted (table D_8010C7E4 @ ROM 0xFED04, used by
+ * 69AA0.c func_8007A488/func_8007A620): Hero spread = speed 28 pitch 30deg
+ * (vs single throw 35 @ 80deg) — flat and quick. Fan rows are in
+ * arena_sim.c. Magnitudes below are feel-scaled, ratio keeps the 30deg
+ * pitch (up/fwd = tan30). Alt table bank (speed 60, half angles) looks
+ * like a powerup variant — v2 items territory. */
+#define TUNE_SPREAD_SPEED    Q(0.095)   /* forward component */
+#define TUNE_SPREAD_UP       Q(0.055)   /* 30deg pitch ratio */
+#define TUNE_KICK_SPEED      Q(0.14)
+#define TUNE_KICK_MIN_VEL    Q(0.02)    /* walk-in kick needs real movement */
 #define TUNE_BOMB_RADIUS     Q(0.30)
 #define TUNE_BOMB_RESTITUTION Q(0.40)   /* single bounce */
 #define TUNE_BOMB_H_DAMP     Q(0.55)    /* horizontal damping on bounce */
 #define TUNE_FUSE_TICKS      150        /* settled -> boom */
-#define TUNE_MAX_LIVE_BOMBS  2
+#define TUNE_MAX_LIVE_BOMBS  6          /* raised from 2: spread stays reliable */
 
 /* -- blasts -- */
 #define TUNE_BLAST_RADIUS    Q(1.60)    /* full radius */
@@ -50,6 +63,6 @@
 #define TUNE_ROUNDS_TO_WIN   3
 
 /* Bump when any value changes; folded into the session version hash. */
-#define TUNE_VERSION         1
+#define TUNE_VERSION         2
 
 #endif

@@ -331,5 +331,5 @@ void draw_hud(SDL_Renderer* r, const ArenaState* s, const ViewerClock* clk,
     }
 
     draw_text(r, 8, (float)h - 24, 2,
-              "P pause  ] step  [ rate  R reset  TAB cam  F1 view  F2 sd-walls  G grid  ESC quit");
+              "SHIFT throw(hold=spread) E set RUN-IN kick P pause ] step [ rate F1 cam");
 }
