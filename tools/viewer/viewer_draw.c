@@ -175,9 +175,70 @@ void draw_scene(SDL_Renderer* r, const ViewerCam* cam, const ArenaState* s,
     flush_drawables(r);
 }
 
-/* Entities are added in Task 6; keep an empty hook until then. */
 static void add_entities(const ViewerCam* cam, const ArenaState* s, int w, int h) {
-    (void)cam; (void)s; (void)w; (void)h;
+    static const SDL_FColor pcol[4] = {
+        {0.95f, 0.95f, 0.95f, 1}, {0.25f, 0.25f, 0.30f, 1},
+        {0.90f, 0.30f, 0.25f, 1}, {0.30f, 0.42f, 0.90f, 1},
+    };
+    static const SDL_FColor shadow = {0, 0, 0, 0.35f};
+
+    for (int i = 0; i < s->num_players; i++) {
+        const ArenaPlayer* p = &s->players[i];
+        Vf3 pos = {QF(p->pos.x), QF(p->pos.y), QF(p->pos.z)};
+        SDL_FColor c = pcol[i];
+        if (p->state == PSTATE_DEAD) {
+            c.a = 0.25f;
+        } else {
+            if (p->state == PSTATE_TUMBLE)
+                c = (SDL_FColor){1.0f, 0.60f, 0.15f, 1};
+            else if (p->timer > 0 && ((s->tick >> 2) & 1))
+                c.a = 0.45f;                     /* post-hit invuln flash */
+            add_circle(cam, w, h, (Vf3){pos.x, 0.01f, pos.z},
+                       QF(TUNE_PLAYER_RADIUS), shadow, 0.01f);
+        }
+        add_circle(cam, w, h, (Vf3){pos.x, pos.y + 0.45f, pos.z},
+                   QF(TUNE_PLAYER_RADIUS), c, 0);
+    }
+
+    for (int i = 0; i < ARENA_MAX_BOMBS; i++) {
+        const ArenaBomb* b = &s->bombs[i];
+        if (b->state == BSTATE_FREE || b->state == BSTATE_EXPLODING) continue;
+        Vf3 pos = {QF(b->pos.x), QF(b->pos.y), QF(b->pos.z)};
+        SDL_FColor c = {0.16f, 0.16f, 0.18f, 1};
+        if (b->state == BSTATE_SETTLED && ((b->fuse / 10) & 1))
+            c = (SDL_FColor){0.85f, 0.20f, 0.15f, 1};    /* fuse flash */
+        if (b->state != BSTATE_HELD)
+            add_circle(cam, w, h, (Vf3){pos.x, 0.01f, pos.z},
+                       QF(TUNE_BOMB_RADIUS), shadow, 0.01f);
+        add_circle(cam, w, h, (Vf3){pos.x, pos.y + 0.3f, pos.z},
+                   QF(TUNE_BOMB_RADIUS), c, 0);
+    }
+
+    for (int i = 0; i < ARENA_MAX_BLASTS; i++) {
+        const ArenaBlast* bl = &s->blasts[i];
+        if (bl->ttl == 0) continue;
+        float fr = (float)bl->radius_t / (float)TUNE_BLAST_GROW_TICKS;
+        if (fr > 1) fr = 1;
+        add_circle(cam, w, h,
+                   (Vf3){QF(bl->center.x), QF(bl->center.y) + 0.2f, QF(bl->center.z)},
+                   fr * QF(TUNE_BLAST_RADIUS),
+                   (SDL_FColor){1.0f, 0.55f, 0.10f,
+                                0.55f * (float)bl->ttl / (float)TUNE_BLAST_TTL},
+                   -0.02f);
+    }
+}
+
+void draw_facing(SDL_Renderer* r, const ViewerCam* cam, const ArenaState* s,
+                 int w, int h) {
+    SDL_SetRenderDrawColor(r, 250, 250, 250, 255);
+    for (int i = 0; i < s->num_players; i++) {
+        const ArenaPlayer* p = &s->players[i];
+        if (p->state == PSTATE_DEAD) continue;
+        float yr = VCAM_BINANG_TO_RAD(p->yaw);
+        Vf3 a = {QF(p->pos.x), QF(p->pos.y) + 0.45f, QF(p->pos.z)};
+        Vf3 b = {a.x + 0.55f * sinf(yr), a.y, a.z - 0.55f * cosf(yr)};
+        draw_world_line(r, cam, a, b, w, h);
+    }
 }
 
 /* HUD is implemented in Task 8; stubs keep the link happy. */

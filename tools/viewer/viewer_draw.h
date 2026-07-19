@@ -12,6 +12,8 @@
 
 void draw_scene(SDL_Renderer* r, const ViewerCam* cam, const ArenaState* s,
                 int w, int h, int show_grid);
+void draw_facing(SDL_Renderer* r, const ViewerCam* cam, const ArenaState* s,
+                 int w, int h);
 void draw_hud(SDL_Renderer* r, const ArenaState* s, const ViewerClock* clk,
               const ViewerCam* cam, int cam_target, int w, int h);
 void draw_text(SDL_Renderer* r, float x, float y, float scale, const char* str);
