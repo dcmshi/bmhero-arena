@@ -18,3 +18,7 @@ enable_testing()
 add_executable(test_determinism tests/test_determinism.c)
 target_link_libraries(test_determinism arena_sim)
 add_test(NAME determinism COMMAND test_determinism)
+
+# --- viewer pure-logic modules (no SDL; always built and tested) ---
+add_executable(test_viewer_clock tests/test_viewer_clock.c tools/viewer/viewer_clock.c)
+add_test(NAME viewer_clock COMMAND test_viewer_clock)
