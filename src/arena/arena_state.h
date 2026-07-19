@@ -17,24 +17,27 @@
  * bits 0-5  : stick X, signed 6-bit stored offset-by-32 (1..63, 32 = neutral; 0 unused)
  * bits 6-11 : stick Y, same encoding
  * bit 12    : jump
- * bit 13    : bomb (hold to grab/charge, release to throw)
+ * bit 13    : bomb (hold to grab, release to throw; long hold arms the spread)
+ * bit 14    : set / kick (edge-triggered)
  * Quantizing analog to 6 bits bounds prediction entropy and packet size. */
 typedef uint16_t ArenaInput;
 
 #define AIN_STICK_MAX 31
 
-static inline ArenaInput arena_input_pack(int sx, int sy, int jump, int bomb) {
+static inline ArenaInput arena_input_pack(int sx, int sy, int jump, int bomb, int set) {
     if (sx < -AIN_STICK_MAX) sx = -AIN_STICK_MAX;
     if (sx >  AIN_STICK_MAX) sx =  AIN_STICK_MAX;
     if (sy < -AIN_STICK_MAX) sy = -AIN_STICK_MAX;
     if (sy >  AIN_STICK_MAX) sy =  AIN_STICK_MAX;
     return (ArenaInput)(((sx + 32) & 63) | (((sy + 32) & 63) << 6)
-                        | ((jump ? 1 : 0) << 12) | ((bomb ? 1 : 0) << 13));
+                        | ((jump ? 1 : 0) << 12) | ((bomb ? 1 : 0) << 13)
+                        | ((set ? 1 : 0) << 14));
 }
 static inline int arena_input_sx(ArenaInput i)   { return (int)(i & 63) - 32; }
 static inline int arena_input_sy(ArenaInput i)   { return (int)((i >> 6) & 63) - 32; }
 static inline int arena_input_jump(ArenaInput i) { return (i >> 12) & 1; }
 static inline int arena_input_bomb(ArenaInput i) { return (i >> 13) & 1; }
+static inline int arena_input_set(ArenaInput i)  { return (i >> 14) & 1; }
 
 /* ---- enums (u8 in state) ---- */
 enum { PSTATE_IDLE, PSTATE_RUN, PSTATE_JUMP, PSTATE_TUMBLE, PSTATE_DEAD };

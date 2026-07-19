@@ -51,7 +51,7 @@ static ArenaInput read_input(const Pads* pads, int player, const ViewerCam* cam)
     }
     int sx, sy;
     vcam_stick_to_world(cam, ix, iy, &sx, &sy);
-    return arena_input_pack(sx, sy, jump, bomb);
+    return arena_input_pack(sx, sy, jump, bomb, 0);
 }
 
 int main(int argc, char** argv) {

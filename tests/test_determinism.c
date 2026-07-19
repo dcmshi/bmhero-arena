@@ -30,7 +30,7 @@ static void script_inputs(ArenaInput out[ARENA_MAX_PLAYERS], uint32_t tick) {
         int sy = (int)((r >> 6) & 63) - 32; if (sy < -31) sy = -31;
         int jump = ((r >> 12) & 31) == 0;               /* ~2/64 ticks */
         int bomb = ((tick + i * 37) % 90) < 30;         /* held 0.5s of every 1.5s */
-        out[i] = arena_input_pack(sx, sy, jump, bomb);
+        out[i] = arena_input_pack(sx, sy, jump, bomb, 0);
     }
 }
 
