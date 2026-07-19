@@ -46,6 +46,15 @@ if(SDL3_FOUND)
   target_link_libraries(arena_viewer arena_sim SDL3::SDL3)
   if(NOT MSVC)
     target_link_libraries(arena_viewer m)
+    target_link_options(arena_viewer PRIVATE -static-libgcc)
+  endif()
+  if(WIN32)
+    # copy SDL3.dll (and friends) beside the exe so it runs outside the
+    # MSYS2 shell / by double-click
+    add_custom_command(TARGET arena_viewer POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              $<TARGET_RUNTIME_DLLS:arena_viewer> $<TARGET_FILE_DIR:arena_viewer>
+      COMMAND_EXPAND_LISTS)
   endif()
   message(STATUS "arena_viewer: SDL3 found - building viewer")
 else()
