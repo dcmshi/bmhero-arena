@@ -87,7 +87,7 @@ if(SDL3_FOUND)
     tools/viewer/viewer_cam.c
     tools/viewer/viewer_clock.c
     tools/viewer/viewer_draw.c)
-  target_link_libraries(arena_viewer arena_sim SDL3::SDL3)
+  target_link_libraries(arena_viewer arena_netplay SDL3::SDL3)
   if(NOT MSVC)
     target_link_libraries(arena_viewer m)
     target_link_options(arena_viewer PRIVATE -static-libgcc)
