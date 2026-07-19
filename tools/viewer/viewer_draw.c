@@ -193,21 +193,19 @@ void draw_scene(SDL_Renderer* r, const ViewerCam* cam, const ArenaState* s,
     }
 
     /* boundary walls at the (possibly shrunken) extent; red in sudden death.
-     * Also background-layer: everything lives INSIDE the ring, so a wall can
-     * never legitimately occlude an entity — flushing them before entities
-     * kills the wall-over-sphere flicker when hugging a wall. */
-    {
-        SDL_FColor wallc = (s->phase == PHASE_SUDDEN_DEATH)
-                         ? (SDL_FColor){0.55f, 0.25f, 0.25f, 1}
-                         : (SDL_FColor){0.30f, 0.34f, 0.42f, 1};
-        float wt = 0.20f, wh = 1.2f;
-        add_box_split(cam, w, h, (Vf3){-ext - wt, 0, -ext - wt}, (Vf3){ ext + wt, wh, -ext}, wallc);
-        add_box_split(cam, w, h, (Vf3){-ext - wt, 0,  ext},      (Vf3){ ext + wt, wh,  ext + wt}, wallc);
-        add_box_split(cam, w, h, (Vf3){-ext - wt, 0, -ext},      (Vf3){-ext,      wh,  ext}, wallc);
-        add_box_split(cam, w, h, (Vf3){ ext,      0, -ext},      (Vf3){ ext + wt, wh,  ext}, wallc);
-        flush_drawables(r);
-        g_ndraw = 0;
-    }
+     * Translucent and painter-sorted with the entities: near the bottom wall
+     * the camera legitimately looks THROUGH a wall at the player — alpha
+     * keeps entities readable behind the glass (draw order: entity behind
+     * wall paints first, wall blends over it), and makes any painter
+     * mis-ordering when hugging a wall invisible. */
+    SDL_FColor wallc = (s->phase == PHASE_SUDDEN_DEATH)
+                     ? (SDL_FColor){0.55f, 0.25f, 0.25f, 0.45f}
+                     : (SDL_FColor){0.30f, 0.34f, 0.42f, 0.45f};
+    float wt = 0.20f, wh = 1.2f;
+    add_box_split(cam, w, h, (Vf3){-ext - wt, 0, -ext - wt}, (Vf3){ ext + wt, wh, -ext}, wallc);
+    add_box_split(cam, w, h, (Vf3){-ext - wt, 0,  ext},      (Vf3){ ext + wt, wh,  ext + wt}, wallc);
+    add_box_split(cam, w, h, (Vf3){-ext - wt, 0, -ext},      (Vf3){-ext,      wh,  ext}, wallc);
+    add_box_split(cam, w, h, (Vf3){ ext,      0, -ext},      (Vf3){ ext + wt, wh,  ext}, wallc);
 
     /* pillars */
     for (int i = 0; i < g->num_pillars; i++) {

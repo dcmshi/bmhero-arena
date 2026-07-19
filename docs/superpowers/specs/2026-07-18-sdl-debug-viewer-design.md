@@ -144,3 +144,28 @@ Gamepad: left stick move, A (south) jump, X (west) bomb grab/throw.
   FetchContent-built SDL3 — either keeps the design intact.
 - The embedded font header must carry a public-domain/CC0 glyph set so the
   repo stays GPL-compatible for the eventual fork.
+
+## 9. Post-playtest addendum (2026-07-19)
+
+Feel-testing corrected the camera design. Research (period reviews,
+GameFAQs guides, StrategyWiki) confirmed the original game's camera is
+**fixed-angle position-follow — it never rotates with the player's
+facing** (slight C-button tilt only, while standing). The rotate-behind
+chase cam specced in §3 caused motion sickness and did not match the
+original. Changes relative to the spec above:
+
+- Camera modes, `F1` cycles: **FOLLOW** (fixed-yaw position-follow —
+  new default, Hero-authentic) → CHASE (spec §3 behavior, kept for
+  comparison; gained an opposition deadband + turn-rate cap) → **ORBIT**
+  (fixed seat framing the whole ring — previews the battle-mode camera,
+  arena design doc §7) → TOP.
+- `F2` toggles sudden-death wall shrink (default **off**): the viewer
+  resets the phase after each tick so long test sessions aren't cut
+  short. Viewer-side only; sim code untouched; never active in
+  `--frames` smoke runs.
+- Rendering hardening found in testing: floor/walls subdivided (whole-
+  face near-plane culling made large quads blink out), checkerboard
+  floor replaces grid lines, stable painter sort (insertion-order
+  tie-break), walls render translucent (the camera legitimately looks
+  through the near wall at the player; entities stay readable behind
+  the glass).
