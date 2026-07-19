@@ -41,7 +41,8 @@ if(SDL3_FOUND)
   add_executable(arena_viewer
     tools/viewer/viewer_main.c
     tools/viewer/viewer_cam.c
-    tools/viewer/viewer_clock.c)
+    tools/viewer/viewer_clock.c
+    tools/viewer/viewer_draw.c)
   target_link_libraries(arena_viewer arena_sim SDL3::SDL3)
   if(NOT MSVC)
     target_link_libraries(arena_viewer m)
