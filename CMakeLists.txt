@@ -57,6 +57,18 @@ add_executable(test_netplay_stress tests/test_netplay_stress.c)
 target_link_libraries(test_netplay_stress arena_netplay)
 add_test(NAME netplay_stress COMMAND test_netplay_stress)
 
+add_executable(test_netplay_p2p tests/test_netplay_p2p.c)
+target_link_libraries(test_netplay_p2p arena_netplay)
+find_program(BASH_PROGRAM bash)
+if(BASH_PROGRAM)
+  add_test(NAME netplay_p2p
+           COMMAND ${BASH_PROGRAM} ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_p2p_test.sh
+                   $<TARGET_FILE:test_netplay_p2p>)
+  set_tests_properties(netplay_p2p PROPERTIES TIMEOUT 120)
+else()
+  message(STATUS "bash not found - netplay_p2p test skipped")
+endif()
+
 # --- viewer pure-logic modules (no SDL; always built and tested) ---
 add_executable(test_viewer_clock tests/test_viewer_clock.c tools/viewer/viewer_clock.c)
 add_test(NAME viewer_clock COMMAND test_viewer_clock)
