@@ -13,6 +13,7 @@
 
 typedef struct {
     int        kind;        /* 0 = quad face, 1 = circle */
+    int        seq;         /* insertion order: stable-sort tie-break */
     float      depth;
     SDL_FColor col;
     SDL_FPoint p[4];        /* face: projected corners */
@@ -23,8 +24,12 @@ static Drawable g_draw[MAX_DRAW];
 static int      g_ndraw;
 
 static int draw_cmp(const void* pa, const void* pb) {
-    float da = ((const Drawable*)pa)->depth, db = ((const Drawable*)pb)->depth;
-    return (da < db) - (da > db);   /* descending: far first */
+    const Drawable* a = (const Drawable*)pa;
+    const Drawable* b = (const Drawable*)pb;
+    if (a->depth != b->depth)
+        return (a->depth < b->depth) - (a->depth > b->depth); /* far first */
+    return (a->seq > b->seq) - (a->seq < b->seq);  /* qsort is unstable:
+        equal depths must not swap frame-to-frame or coplanar items flicker */
 }
 
 static void add_face(const ViewerCam* cam, int w, int h,
@@ -49,6 +54,7 @@ static void add_face(const ViewerCam* cam, int w, int h,
     if (lit < 0) lit = -lit;               /* winding-agnostic */
     float shade = 0.6f + 0.4f * lit;
     dr->kind  = 0;
+    dr->seq   = g_ndraw;
     dr->depth = depth_sum * 0.25f;
     dr->col   = (SDL_FColor){col.r * shade, col.g * shade, col.b * shade, col.a};
     g_ndraw++;
@@ -76,9 +82,29 @@ static void add_circle(const ViewerCam* cam, int w, int h,
     if (!vcam_project(cam, center, w, h, &sx, &sy, &dep)) return;
     float rad = vcam_screen_radius(cam, center, world_r, w, h);
     if (rad < 0.5f) return;
-    Drawable* dr = &g_draw[g_ndraw++];
-    dr->kind = 1; dr->depth = dep + depth_bias; dr->col = col;
+    Drawable* dr = &g_draw[g_ndraw];
+    dr->kind = 1; dr->seq = g_ndraw; dr->depth = dep + depth_bias; dr->col = col;
     dr->cx = sx; dr->cy = sy; dr->rad = rad;
+    g_ndraw++;
+}
+
+/* Large faces get dropped WHOLE when one corner crosses the near plane
+ * (add_face's culling rule) — the floor/walls must be built from small
+ * pieces so only near/off-screen pieces vanish. */
+static void add_box_split(const ViewerCam* cam, int w, int h,
+                          Vf3 mn, Vf3 mx, SDL_FColor col) {
+    const float seg = 3.0f;
+    if (mx.x - mn.x >= mx.z - mn.z) {
+        for (float x = mn.x; x < mx.x; x += seg) {
+            float x2 = (x + seg > mx.x) ? mx.x : x + seg;
+            add_box(cam, w, h, (Vf3){x, mn.y, mn.z}, (Vf3){x2, mx.y, mx.z}, col);
+        }
+    } else {
+        for (float z = mn.z; z < mx.z; z += seg) {
+            float z2 = (z + seg > mx.z) ? mx.z : z + seg;
+            add_box(cam, w, h, (Vf3){mn.x, mn.y, z}, (Vf3){mx.x, mx.y, z2}, col);
+        }
+    }
 }
 
 static void draw_circle(SDL_Renderer* r, float cx, float cy, float rad, SDL_FColor col) {
@@ -149,19 +175,32 @@ void draw_scene(SDL_Renderer* r, const ViewerCam* cam, const ArenaState* s,
 
     g_ndraw = 0;
 
-    /* floor slab, slightly below y=0 so ground entities draw on top */
-    add_box(cam, w, h, (Vf3){-full, -0.15f, -full}, (Vf3){full, -0.02f, full},
-            (SDL_FColor){0.16f, 0.18f, 0.22f, 1});
+    /* floor: flat tiles slightly below y=0. Tiled because add_face drops a
+     * face whole when any corner crosses the near plane — one giant quad
+     * blinks out; small tiles only vanish right at the camera's feet. */
+    {
+        const float tile = 3.0f;
+        SDL_FColor fc = {0.16f, 0.18f, 0.22f, 1};
+        for (float tx = -full; tx < full; tx += tile) {
+            for (float tz = -full; tz < full; tz += tile) {
+                float x2 = (tx + tile > full) ? full : tx + tile;
+                float z2 = (tz + tile > full) ? full : tz + tile;
+                add_face(cam, w, h,
+                         (Vf3){tx, -0.02f, tz}, (Vf3){x2, -0.02f, tz},
+                         (Vf3){x2, -0.02f, z2}, (Vf3){tx, -0.02f, z2}, fc);
+            }
+        }
+    }
 
     /* boundary walls at the (possibly shrunken) extent; red in sudden death */
     SDL_FColor wallc = (s->phase == PHASE_SUDDEN_DEATH)
                      ? (SDL_FColor){0.55f, 0.25f, 0.25f, 1}
                      : (SDL_FColor){0.30f, 0.34f, 0.42f, 1};
     float wt = 0.20f, wh = 1.2f;
-    add_box(cam, w, h, (Vf3){-ext - wt, 0, -ext - wt}, (Vf3){ ext + wt, wh, -ext}, wallc);
-    add_box(cam, w, h, (Vf3){-ext - wt, 0,  ext},      (Vf3){ ext + wt, wh,  ext + wt}, wallc);
-    add_box(cam, w, h, (Vf3){-ext - wt, 0, -ext},      (Vf3){-ext,      wh,  ext}, wallc);
-    add_box(cam, w, h, (Vf3){ ext,      0, -ext},      (Vf3){ ext + wt, wh,  ext}, wallc);
+    add_box_split(cam, w, h, (Vf3){-ext - wt, 0, -ext - wt}, (Vf3){ ext + wt, wh, -ext}, wallc);
+    add_box_split(cam, w, h, (Vf3){-ext - wt, 0,  ext},      (Vf3){ ext + wt, wh,  ext + wt}, wallc);
+    add_box_split(cam, w, h, (Vf3){-ext - wt, 0, -ext},      (Vf3){-ext,      wh,  ext}, wallc);
+    add_box_split(cam, w, h, (Vf3){ ext,      0, -ext},      (Vf3){ ext + wt, wh,  ext}, wallc);
 
     /* pillars */
     for (int i = 0; i < g->num_pillars; i++) {

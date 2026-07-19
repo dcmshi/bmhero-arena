@@ -27,6 +27,18 @@ int main(void) {
     vcam_update(&c, (Vf3){0, 0, 0}, -2.8f);
     CHECK(c.yaw > 2.8f || c.yaw < -2.8f, "yaw wraps across pi, no long-way spin");
 
+    /* opposition: walking straight at the camera must not swing the yaw —
+     * the swing direction is ambiguous at ~180 and flips sign every tick */
+    vcam_init(&c);
+    c.yaw = 0.0f; c.smooth = 0.25f;
+    vcam_update(&c, (Vf3){0, 0, 0}, PI_F);
+    float y_opp1 = c.yaw;
+    vcam_update(&c, (Vf3){0, 0, 0}, -PI_F);   /* pi's sign flips tick-to-tick */
+    CHECK(NEAR(y_opp1, 0, 1e-4f) && NEAR(c.yaw, 0, 1e-4f),
+          "opposition deadband: camera holds when player runs at it");
+    vcam_update(&c, (Vf3){0, 0, 0}, 2.0f);
+    CHECK(c.yaw > 0.4f, "normal follow unaffected by deadband");
+
     /* perspective projection */
     vcam_init(&c);
     c.smooth = 1.0f;

@@ -18,7 +18,11 @@ void vcam_init(ViewerCam* c) {
 }
 
 void vcam_update(ViewerCam* c, Vf3 p, float yaw_rad) {
-    c->yaw = wrap_pi(c->yaw + c->smooth * wrap_pi(yaw_rad - c->yaw));
+    float diff = wrap_pi(yaw_rad - c->yaw);
+    /* Near-opposition (player running at the camera) the swing direction is
+     * ambiguous and diff's sign flips tick-to-tick -> jitter. Hold instead. */
+    if (fabsf(diff) < 2.9f)
+        c->yaw = wrap_pi(c->yaw + c->smooth * diff);
     c->target = (Vf3){ p.x, p.y + c->look_up, p.z };
     float fx = sinf(c->yaw), fz = -cosf(c->yaw);   /* look dir on XZ */
     c->pos = (Vf3){ p.x - fx * c->dist, p.y + c->height, p.z - fz * c->dist };
