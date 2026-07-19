@@ -50,7 +50,7 @@ typedef struct {                 /* 44 bytes */
     uint16_t yaw;                /* facing, binary angle */
     uint8_t  state;              /* PSTATE_* */
     uint8_t  hp;
-    uint16_t timer;              /* invuln / tumble / charge, per state */
+    uint16_t timer;              /* invuln / tumble / bomb-hold, per state */
     uint8_t  stocks_won;
     uint8_t  held_bomb;          /* bomb index + 1, 0 = none */
     uint8_t  live_bombs;

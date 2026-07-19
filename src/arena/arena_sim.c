@@ -100,6 +100,18 @@ static void detonate(ArenaState* s, int bi) {
     b->state = BSTATE_FREE;
 }
 
+/* Launch bomb b from player pi's hands along binary-angle dir. */
+static void throw_bomb(ArenaState* s, int pi, ArenaBomb* b, uint16_t dir,
+                       q32 fwd, q32 up) {
+    const ArenaPlayer* p = &s->players[pi];
+    b->pos = p->pos; b->pos.y += TUNE_PLAYER_HEIGHT;
+    b->vel.x =  qmul(qsin(dir), fwd) + p->vel.x;
+    b->vel.z = -qmul(qcos(dir), fwd) + p->vel.z;
+    b->vel.y = up;
+    b->state   = BSTATE_AIRBORNE;
+    b->bounced = 0;
+}
+
 /* --------------------------------------------------------- player tick */
 
 static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g,
@@ -139,7 +151,7 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
         p->state = PSTATE_JUMP;
     }
 
-    /* bomb grab / charge / throw */
+    /* bomb grab / hold / throw — single arc, or 4-bomb spread on long hold */
     if (gameplay && p->state != PSTATE_TUMBLE) {
         int bomb_now = arena_input_bomb(in), bomb_prev = arena_input_bomb(prev);
         if (bomb_now && !bomb_prev && p->held_bomb == 0
@@ -152,20 +164,38 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
                 b->state = BSTATE_HELD;
                 p->held_bomb = (uint8_t)(bi + 1);
                 p->live_bombs++;
-                p->timer = 0;                       /* charge counter */
+                p->timer = 0;                       /* hold counter */
             }
         } else if (bomb_now && p->held_bomb) {
-            if (p->timer < 0xFFFF) p->timer++;      /* charging */
+            if (p->timer < 0xFFFF) p->timer++;      /* holding (spread arms) */
         } else if (!bomb_now && bomb_prev && p->held_bomb) {
-            ArenaBomb* b = &s->bombs[p->held_bomb - 1];
-            int tier2 = p->timer >= TUNE_CHARGE_TICKS;
-            q32 fwd = tier2 ? TUNE_THROW_SPEED_2 : TUNE_THROW_SPEED_1;
-            q32 up  = tier2 ? TUNE_THROW_UP_2    : TUNE_THROW_UP_1;
-            b->pos = p->pos; b->pos.y += TUNE_PLAYER_HEIGHT;
-            b->vel.x = qmul(qsin(p->yaw), fwd) + p->vel.x;
-            b->vel.z = -qmul(qcos(p->yaw), fwd) + p->vel.z;
-            b->vel.y = up;
-            b->state = BSTATE_AIRBORNE;
+            ArenaBomb* held = &s->bombs[p->held_bomb - 1];
+            if (p->timer < TUNE_SPREAD_TICKS) {
+                /* single arc: distance scales with stick tilt at release */
+                int ix = arena_input_sx(in), iy = arena_input_sy(in);
+                q32 tilt = qlen2(Q(ix) / AIN_STICK_MAX, Q(iy) / AIN_STICK_MAX);
+                if (tilt > Q_ONE) tilt = Q_ONE;
+                if (tilt < TUNE_THROW_MIN_FRAC) tilt = TUNE_THROW_MIN_FRAC;
+                throw_bomb(s, pi, held, p->yaw,
+                           qmul(TUNE_THROW_SPEED, tilt), TUNE_THROW_UP);
+            } else {
+                /* spread: forward fan, fixed short trajectory. Offsets in
+                 * fixed order so a clamped spread stays centered. */
+                static const int16_t fan[4] = { 0x038E, -0x038E, 0x0AAA, -0x0AAA };
+                throw_bomb(s, pi, held, (uint16_t)(p->yaw + (uint16_t)fan[0]),
+                           TUNE_SPREAD_SPEED, TUNE_SPREAD_UP);
+                for (int k = 1; k < 4; k++) {
+                    if (p->live_bombs >= TUNE_MAX_LIVE_BOMBS) break;
+                    int bi = find_free_bomb(s);
+                    if (bi < 0) break;
+                    ArenaBomb* nb = &s->bombs[bi];
+                    memset(nb, 0, sizeof(*nb));
+                    nb->owner = (uint8_t)pi;
+                    p->live_bombs++;
+                    throw_bomb(s, pi, nb, (uint16_t)(p->yaw + (uint16_t)fan[k]),
+                               TUNE_SPREAD_SPEED, TUNE_SPREAD_UP);
+                }
+            }
             p->held_bomb = 0;
             p->timer = 0;
         }

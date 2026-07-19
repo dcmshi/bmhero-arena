@@ -25,6 +25,13 @@ if(NOT MSVC)
 endif()
 add_test(NAME determinism COMMAND test_determinism)
 
+add_executable(test_bomb_mechanics tests/test_bomb_mechanics.c)
+target_link_libraries(test_bomb_mechanics arena_sim)
+if(NOT MSVC)
+  target_compile_options(test_bomb_mechanics PRIVATE -Wconversion -Wno-sign-conversion)
+endif()
+add_test(NAME bomb_mechanics COMMAND test_bomb_mechanics)
+
 # --- viewer pure-logic modules (no SDL; always built and tested) ---
 add_executable(test_viewer_clock tests/test_viewer_clock.c tools/viewer/viewer_clock.c)
 add_test(NAME viewer_clock COMMAND test_viewer_clock)

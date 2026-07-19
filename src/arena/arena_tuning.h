@@ -21,17 +21,22 @@
 #define TUNE_PLAYER_RADIUS   Q(0.35)
 #define TUNE_PLAYER_HEIGHT   Q(1.0)
 
-/* -- bombs -- TODO(feel): throw arcs from decomp bomb code */
-#define TUNE_THROW_SPEED_1   Q(0.12)    /* tap / short lob */
-#define TUNE_THROW_SPEED_2   Q(0.22)    /* charged */
-#define TUNE_THROW_UP_1      Q(0.10)
-#define TUNE_THROW_UP_2      Q(0.14)
-#define TUNE_CHARGE_TICKS    24         /* hold >= this = tier 2 */
+/* -- bombs -- TODO(feel): verify every value in A1 (throw arc from decomp;
+ * kick-vs-wall detonation is owner-recalled, confirm in the recomp) */
+#define TUNE_THROW_SPEED     Q(0.18)    /* single throw, full stick tilt */
+#define TUNE_THROW_UP        Q(0.12)
+#define TUNE_THROW_MIN_FRAC  Q(0.35)    /* neutral-stick lob = this fraction */
+#define TUNE_SPREAD_TICKS    120        /* hold >= this arms the 4-bomb spread */
+#define TUNE_SPREAD_SPEED    Q(0.11)    /* spread: fixed shorter trajectory */
+#define TUNE_SPREAD_UP       Q(0.10)
+#define TUNE_KICK_SPEED      Q(0.14)
+#define TUNE_KICK_RANGE      Q(0.9)     /* settled bomb within this can be kicked */
+#define TUNE_KICK_CONE       0x2000     /* +/-45 deg of facing, binary angle */
 #define TUNE_BOMB_RADIUS     Q(0.30)
 #define TUNE_BOMB_RESTITUTION Q(0.40)   /* single bounce */
 #define TUNE_BOMB_H_DAMP     Q(0.55)    /* horizontal damping on bounce */
 #define TUNE_FUSE_TICKS      150        /* settled -> boom */
-#define TUNE_MAX_LIVE_BOMBS  2
+#define TUNE_MAX_LIVE_BOMBS  6          /* raised from 2: spread stays reliable */
 
 /* -- blasts -- */
 #define TUNE_BLAST_RADIUS    Q(1.60)    /* full radius */
@@ -50,6 +55,6 @@
 #define TUNE_ROUNDS_TO_WIN   3
 
 /* Bump when any value changes; folded into the session version hash. */
-#define TUNE_VERSION         1
+#define TUNE_VERSION         2
 
 #endif
