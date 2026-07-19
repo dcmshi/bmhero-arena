@@ -14,8 +14,15 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
 **A0 complete.** Headless deterministic arena sim in `src/arena/`, all tests
 green (`tests/test_determinism.c`): bit-identical replay, GekkoNet-style
 rollback stress, snapshot round-trip, liveness. Scripted-match hash pinned at
-`a55aa9b1` — verified across the full CI matrix (Linux gcc/clang, ARM64,
-macOS, Windows) on GitHub: https://github.com/dcmshi/bmhero-arena.
+`fb726383` (re-pinned 2026-07-19 with the bomb-mechanics correction —
+`TUNE_VERSION` 2, first intentional gameplay change; previously `a55aa9b1`)
+— CI matrix on GitHub: https://github.com/dcmshi/bmhero-arena.
+
+**Bomb mechanics are Hero-authentic (2026-07-19).** Single-arc throw with
+stick-tilt distance, 4-bomb spread on ≥2s hold, set + kick (input bit 14;
+`BSTATE_SLIDING`; kicked bombs detonate on first contact — owner-recalled,
+verify in A1). Cap 6 live bombs. TDD'd in `tests/test_bomb_mechanics.c`;
+design doc §2 records the verified mechanics and sources.
 
 **SDL debug viewer complete (2026-07-19).** `tools/viewer/` (floats OK there;
 spec + post-playtest addendum in `docs/superpowers/specs/`): camera modes on
@@ -26,13 +33,6 @@ walls, F2 sudden-death toggle (viewer-side; sim untouched), `--frames N`
 deterministic smoke flag. Pure modules unit-tested (`tests/test_viewer_*.c`).
 Keyboard playtested; **gamepad path written but not yet device-tested** (no
 pad on hand). Toolchain: MSYS2 UCRT64 (gcc/CMake/Ninja/SDL3), README §Windows.
-
-**Pending design correction (verified 2026-07-19, sources in
-`docs/superpowers/specs/` addendum + memory):** Hero's bomb mechanics are NOT
-two charge tiers — B = single-arc throw (distance by stick tilt), hold B =
-4-bomb forward spread at shorter range, R/C-down = set bomb, double-tap = kick.
-Fixing this is sim work: intentional hash change + `TUNE_VERSION` bump +
-design doc §2 update.
 
 ## Hard invariants — breaking any of these breaks netplay
 
@@ -53,15 +53,11 @@ changes, that must be an intentional gameplay change.
 
 ## Next milestones (in order; docs §9 of arena design)
 
-1. **Bomb-mechanics correction** (sim, ROM-free): single-arc throw with
-   stick-tilt distance, 4-bomb spread on hold, set + kick (input bit 14 free;
-   likely new bomb state for sliding). Intentional CI-hash change +
-   `TUNE_VERSION` bump; update design doc §2 and the viewer's bindings.
-2. **A2 netcode: GekkoNet `SyncSession` wrapper** (ROM-free): couch/online/
+1. **A2 netcode: GekkoNet `SyncSession` wrapper** (ROM-free): couch/online/
    stress configs behind one interface; two-process localhost match as the test.
    GekkoNet: https://github.com/HeatXD/GekkoNet (BSD-2). Host = session
    authority, full-mesh inputs, host-relay fallback (arena doc §6).
-3. **A1 render bridge + feel** (needs user's ROM + local BMHeroRecomp build,
+2. **A1 render bridge + feel** (needs user's ROM + local BMHeroRecomp build,
    fork of https://github.com/RevoSucks/BMHeroRecomp): spawn/puppet `gObjects`
    entries; transcribe every `TODO(feel)` constant in `arena_tuning.h` from the
    decomp (https://github.com/Bomberhackers/bmhero — start at `gPlayerObject`

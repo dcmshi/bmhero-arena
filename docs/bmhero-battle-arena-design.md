@@ -17,7 +17,18 @@
 
 - **Match:** 2–4 players, last-bomber-standing rounds; first to 3 round wins. Round timer 2:00 → sudden death (arena walls close in / blast radius creeps up).
 - **Health:** 2 hits per round (Hero-style heart) — a blast hit deals 1 damage + knockback; brief post-hit invulnerability (60 ticks). 0 HP = out for the round (becomes spectator-ghost).
-- **Bombs:** hold to grab, release to throw in facing direction with Hero's arc; tap = short lob, hold = pumped/full throw (2 charge tiers, like Hero's throw). Bombs bounce once, then sit with a fuse (~150 ticks); direct hit on a player detonates on impact. Max 2 live bombs per player (item-upgradable later).
+- **Bombs:** press B to pull one out (can run/jump while holding); release =
+  single-arc throw in facing direction, distance scaling with stick tilt at
+  release (neutral stick = short lob). Hold ≥ ~2s to arm the **4-bomb
+  spread** — a forward fan (±5°, ±15°) at a fixed shorter trajectory. A
+  separate **set** button lays a bomb at the feet; pressing it with a
+  settled bomb in front (any owner) **kicks** it — kicked bombs slide flat
+  and **detonate on first contact** (wall, pillar, player, bomb) or on fuse
+  expiry *(kick-vs-wall detonation owner-recalled; verify in A1)*. Thrown
+  bombs bounce once, then sit with a fuse (~150 ticks); direct hit on a
+  player detonates on impact. Max 6 live bombs per player. *(Mechanics
+  verified 2026-07-19 vs GameFAQs/StrategyWiki/Bomberman Wiki — replaces
+  the earlier invented charge-tier throw.)*
 - **Blasts:** spherical, radius R for ~20 ticks; chain-detonate other bombs; blasts hurt the owner too.
 - **Movement:** analog run (camera-relative), single jump, air control, blast knockback launches with brief tumble state; arena has pits/hazards in some layouts (fall = 1 damage + respawn on platform).
 - **No powerups in v1.** Items (fire-up, bomb-up, speed, heart) are v2 — they slot into the state spec (§3) without layout changes.
@@ -37,7 +48,7 @@ typedef struct { s32 x, y, z; } Vec3q;            // 12B, Q20.12
 typedef struct {                                   // 40B (asserted)
     Vec3q pos, vel;                                // 24B
     u16   yaw;  u8 state;  u8 hp;                  // IDLE/RUN/JUMP/TUMBLE/DEAD
-    u16   timer;                                   // charge / tumble+invuln, per state
+    u16   timer;                                   // bomb-hold / tumble+invuln, per state
     u8    stocks_won; u8 held_bomb;                // held_bomb: bomb index+1, 0=none
     u8    live_bombs; u8 pad0;
     u16   last_input;                              // previous tick (edge detection)
@@ -84,7 +95,7 @@ typedef struct {                                   // 944B total (asserted)
 
 ## 5. Feel: transcribing Hero's constants
 
-The decomp is the reference manual, not a dependency. Process: locate the player movement update in [bomberhackers/bmhero](https://github.com/Bomberhackers/bmhero) (start from `gPlayerObject` uses and the object-update dispatch over `gObjects[207]`), extract run speed, acceleration, jump impulse, gravity, throw velocities per charge tier, blast radius/knockback — convert each float/fixed constant to Q20.12, and keep them in one `arena_tuning.h` table (versioned, hashed into the handshake). Where the decomp still has unmatched asm for a needed function, measure empirically in the recomp (record inputs, log `gPlayerObject` positions via a debug patch, fit constants). Tuning divergence from Hero is then a deliberate per-constant choice, not an accident.
+The decomp is the reference manual, not a dependency. Process: locate the player movement update in [bomberhackers/bmhero](https://github.com/Bomberhackers/bmhero) (start from `gPlayerObject` uses and the object-update dispatch over `gObjects[207]`), extract run speed, acceleration, jump impulse, gravity, throw arc velocity (plus spread fan angles/arm time and kick speed/range), blast radius/knockback — convert each float/fixed constant to Q20.12, and keep them in one `arena_tuning.h` table (versioned, hashed into the handshake). Where the decomp still has unmatched asm for a needed function, measure empirically in the recomp (record inputs, log `gPlayerObject` positions via a debug patch, fit constants). Tuning divergence from Hero is then a deliberate per-constant choice, not an accident.
 
 ## 6. Netcode integration (GekkoNet)
 
