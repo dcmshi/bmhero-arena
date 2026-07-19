@@ -18,6 +18,28 @@ rollback stress, snapshot round-trip, liveness. Scripted-match hash pinned at
 `TUNE_VERSION` 2, first intentional gameplay change; previously `a55aa9b1`)
 — CI matrix on GitHub: https://github.com/dcmshi/bmhero-arena.
 
+**A1.0 complete (2026-07-19).** Fork `dcmshi/BMHeroRecomp` builds locally and
+boots the campaign (intro + level play confirmed) at
+`C:\Users\dshi\GitRepos\BMHeroRecomp`. Repo decision: `bmhero-arena` stays
+canonical; the fork will consume it as a **submodule** in A1.1. Build recipe
+(the toolchain fight is documented so A1.1+ can rebuild):
+- N64Recomp built from source with MSYS2 gcc → `N64Recomp.exe`/`RSPRecomp.exe`
+  staged in the fork root (they need `C:\msys64\ucrt64\bin` on PATH at run
+  time for their runtime DLLs).
+- Main build: VS 2022 clang-cl + `cmake --build build-cmake --target
+  BMHeroRecompiled` from a VS dev shell.
+- **`patches/` sub-build needs LLVM 15** (upstream CI uses clang-15): VS's
+  clang-19 has no MIPS backend; MSYS2's LLVM-22 lld rejects the old linker
+  flags. Fix: portable LLVM 15.0.7 extracted (no install) to
+  `C:\Users\dshi\GitRepos\.tools\llvm15`. Zero fork source changes.
+- Full-build PATH: `…\.tools\llvm15\bin` + VS dev-shell PATH +
+  `C:\msys64\ucrt64\bin` + `C:\msys64\usr\bin` (order matters: LLVM15 first
+  so patches' `clang`/`ld.lld` = v15; MSVC `link.exe` before msys; `make`
+  from usr/bin). Your ROM's sha1 is already the recompiler-input image.
+Default keyboard controls (recomp): WASD stick, Space=A, LShift=B, Q=Z, E=L,
+R=R, Enter=Start, arrows=C, IJKL=D-pad, Esc=recomp menu. Next: A1.1 mod
+scaffold — arena submodule + Battle menu entry + map-shell load.
+
 **A2 SyncSession complete (2026-07-19).** `src/netplay/` wraps GekkoNet
 (FetchContent, pinned tag `v20260629200724-02c447c`, BSD-2) behind one C
 interface — couch/online/stress — the session owns `ArenaState` and is the
@@ -67,22 +89,27 @@ changes, that must be an intentional gameplay change.
 
 ## Next milestones (in order; docs §9 of arena design)
 
-1. **A1 render bridge + feel** (needs user's ROM + local BMHeroRecomp build,
-   fork of https://github.com/RevoSucks/BMHeroRecomp): spawn/puppet `gObjects`
-   entries; transcribe every `TODO(feel)` constant in `arena_tuning.h` from the
+1. **A1 render bridge + feel** — *A1.0 done (fork builds + boots).* Remaining:
+   **A1.1** arena submodule + Battle menu entry + map-shell load; **A1.2**
+   render bridge spawning/puppeting `gObjects` entries from `ArenaState`;
+   **A1.3** transcribe every `TODO(feel)` constant in `arena_tuning.h` from the
    decomp (https://github.com/Bomberhackers/bmhero — start at `gPlayerObject`
    usage and the object update dispatch over `gObjects[207]`; Hack64 wiki has
-   supplementary RE notes). Constants go only in `arena_tuning.h`.
+   supplementary RE notes; throw/spread/kick constants already extracted). All
+   constants go only in `arena_tuning.h`.
 2. **A3 online hardening** (ROM-free): rendezvous server + lobby codes,
    host-relay fallback via a custom GekkoNet adapter, 4P mesh WAN soak,
    desync surfacing UI, automatic player-slot assignment (arena doc §6).
 
 ## Repo plan
 
-This folder becomes `src/arena/` + `tests/` inside a fork of BMHeroRecomp
-(decision: fork, not standalone; mod-packaging deferred). Until the fork
-exists it builds standalone with the one-line gcc command or CMake. The
-recomp is GPL-3.0 — all code here ships GPL-compatible.
+This repo stays **canonical and standalone** (sim/netcode/viewer keep their
+own CI, tests, fast iteration). The fork `dcmshi/BMHeroRecomp` consumes it as
+a **git submodule** from A1.1 onward (decision 2026-07-19, superseding the
+earlier "fold src/arena into the fork" note) — the fork adds only the
+integration layer (patches, render bridge, Battle menu). Builds standalone
+with the one-line gcc command or CMake. The recomp is GPL-3.0 — all code here
+ships GPL-compatible.
 
 ## Known intentional simplifications (v1)
 
