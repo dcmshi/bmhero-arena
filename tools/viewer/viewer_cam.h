@@ -12,6 +12,7 @@ typedef struct {
     /* rig constants — viewer-only, tune freely */
     float dist, height, look_up;   /* boom length, eye height, aim height */
     float smooth;                  /* yaw lerp per update, 0..1 */
+    float max_turn;                /* yaw rate cap, radians per update */
     float fov_deg;
     float ortho_halfspan;          /* top-down: world units center -> edge */
     /* state */

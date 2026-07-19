@@ -164,32 +164,32 @@ void draw_scene(SDL_Renderer* r, const ViewerCam* cam, const ArenaState* s,
     if (s->phase == PHASE_SUDDEN_DEATH)
         ext -= (float)s->shrink_step * 0.03f;   /* mirrors sim wall shrink */
 
-    /* grid first: always behind everything */
-    if (show_grid) {
-        SDL_SetRenderDrawColor(r, 45, 50, 62, 255);
-        for (int i = -(int)full; i <= (int)full; i++) {
-            draw_world_line(r, cam, (Vf3){(float)i, 0, -full}, (Vf3){(float)i, 0, full}, w, h);
-            draw_world_line(r, cam, (Vf3){-full, 0, (float)i}, (Vf3){full, 0, (float)i}, w, h);
-        }
-    }
-
     g_ndraw = 0;
 
-    /* floor: flat tiles slightly below y=0. Tiled because add_face drops a
-     * face whole when any corner crosses the near plane — one giant quad
-     * blinks out; small tiles only vanish right at the camera's feet. */
+    /* ---- ground layer: checkerboard floor tiles, flushed on their own so
+     * the ground can never paint over entities (nothing sits below the
+     * floor, so it must always lose). Tiled because add_face drops a face
+     * whole when any corner crosses the near plane — one giant quad blinks
+     * out; 1-unit tiles only vanish right at the camera's feet, and the
+     * checker pattern doubles as the movement grid (G toggles it flat). */
     {
-        const float tile = 3.0f;
-        SDL_FColor fc = {0.16f, 0.18f, 0.22f, 1};
-        for (float tx = -full; tx < full; tx += tile) {
-            for (float tz = -full; tz < full; tz += tile) {
+        const float tile = 1.0f;
+        SDL_FColor fa = {0.16f, 0.18f, 0.22f, 1};
+        SDL_FColor fb = {0.20f, 0.23f, 0.28f, 1};
+        int cx = 0;
+        for (float tx = -full; tx < full; tx += tile, cx++) {
+            int cz = 0;
+            for (float tz = -full; tz < full; tz += tile, cz++) {
                 float x2 = (tx + tile > full) ? full : tx + tile;
                 float z2 = (tz + tile > full) ? full : tz + tile;
+                SDL_FColor fc = (show_grid && ((cx ^ cz) & 1)) ? fb : fa;
                 add_face(cam, w, h,
                          (Vf3){tx, -0.02f, tz}, (Vf3){x2, -0.02f, tz},
                          (Vf3){x2, -0.02f, z2}, (Vf3){tx, -0.02f, z2}, fc);
             }
         }
+        flush_drawables(r);   /* coplanar disjoint tiles: order irrelevant */
+        g_ndraw = 0;
     }
 
     /* boundary walls at the (possibly shrunken) extent; red in sudden death */

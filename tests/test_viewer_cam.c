@@ -37,7 +37,20 @@ int main(void) {
     CHECK(NEAR(y_opp1, 0, 1e-4f) && NEAR(c.yaw, 0, 1e-4f),
           "opposition deadband: camera holds when player runs at it");
     vcam_update(&c, (Vf3){0, 0, 0}, 2.0f);
-    CHECK(c.yaw > 0.4f, "normal follow unaffected by deadband");
+    CHECK(c.yaw > 0.01f && c.yaw <= c.max_turn + 1e-4f,
+          "large diffs still move, but rate-limited");
+
+    /* big swings are rate-limited: recovering from near-opposition must not
+     * whip the camera around at smooth*diff speed */
+    vcam_init(&c);
+    c.yaw = 0.0f; c.smooth = 0.25f;
+    vcam_update(&c, (Vf3){0, 0, 0}, 2.5f);
+    CHECK(NEAR(c.yaw, c.max_turn, 1e-4f), "turn speed capped at max_turn/update");
+    /* small corrections (normal forward running) are NOT rate-limited */
+    vcam_init(&c);
+    c.yaw = 0.0f; c.smooth = 0.25f;
+    vcam_update(&c, (Vf3){0, 0, 0}, 0.1f);
+    CHECK(NEAR(c.yaw, 0.025f, 1e-4f), "small diffs use proportional follow");
 
     /* perspective projection */
     vcam_init(&c);

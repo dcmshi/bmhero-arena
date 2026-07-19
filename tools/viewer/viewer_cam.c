@@ -11,7 +11,8 @@ static float wrap_pi(float a) {
 
 void vcam_init(ViewerCam* c) {
     c->dist = 4.0f; c->height = 5.0f; c->look_up = 1.0f;   /* ~45 deg pitch */
-    c->smooth = 0.08f; c->fov_deg = 60.0f; c->ortho_halfspan = 7.5f;
+    c->smooth = 0.08f; c->max_turn = 0.045f;   /* ~2.6 deg/frame swing cap */
+    c->fov_deg = 60.0f; c->ortho_halfspan = 7.5f;
     c->yaw = 0.0f; c->topdown = 0;
     c->pos = (Vf3){0, c->height, c->dist};
     c->target = (Vf3){0, c->look_up, 0};
@@ -21,8 +22,13 @@ void vcam_update(ViewerCam* c, Vf3 p, float yaw_rad) {
     float diff = wrap_pi(yaw_rad - c->yaw);
     /* Near-opposition (player running at the camera) the swing direction is
      * ambiguous and diff's sign flips tick-to-tick -> jitter. Hold instead. */
-    if (fabsf(diff) < 2.9f)
-        c->yaw = wrap_pi(c->yaw + c->smooth * diff);
+    if (fabsf(diff) < 2.9f) {
+        float step = c->smooth * diff;
+        /* proportional follow whips on big diffs (deadband recovery): cap it */
+        if (step >  c->max_turn) step =  c->max_turn;
+        if (step < -c->max_turn) step = -c->max_turn;
+        c->yaw = wrap_pi(c->yaw + step);
+    }
     c->target = (Vf3){ p.x, p.y + c->look_up, p.z };
     float fx = sinf(c->yaw), fz = -cosf(c->yaw);   /* look dir on XZ */
     c->pos = (Vf3){ p.x - fx * c->dist, p.y + c->height, p.z - fz * c->dist };
