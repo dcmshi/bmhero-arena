@@ -14,8 +14,25 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
 **A0 complete.** Headless deterministic arena sim in `src/arena/`, all tests
 green (`tests/test_determinism.c`): bit-identical replay, GekkoNet-style
 rollback stress, snapshot round-trip, liveness. Scripted-match hash pinned at
-`a55aa9b1` (gcc -O0/-O2 verified locally; `.github/workflows/determinism.yml`
-extends to clang/MSVC-runner/ARM64 on push).
+`a55aa9b1` — verified across the full CI matrix (Linux gcc/clang, ARM64,
+macOS, Windows) on GitHub: https://github.com/dcmshi/bmhero-arena.
+
+**SDL debug viewer complete (2026-07-19).** `tools/viewer/` (floats OK there;
+spec + post-playtest addendum in `docs/superpowers/specs/`): camera modes on
+F1 — FOLLOW default (fixed yaw; **verified: Hero's real camera never rotates
+with facing**, see design doc §7 note), CHASE, ORBIT (battle-mode preview),
+TOP — pause/step/slow-mo, HUD with live hash, checkerboard ground, translucent
+walls, F2 sudden-death toggle (viewer-side; sim untouched), `--frames N`
+deterministic smoke flag. Pure modules unit-tested (`tests/test_viewer_*.c`).
+Keyboard playtested; **gamepad path written but not yet device-tested** (no
+pad on hand). Toolchain: MSYS2 UCRT64 (gcc/CMake/Ninja/SDL3), README §Windows.
+
+**Pending design correction (verified 2026-07-19, sources in
+`docs/superpowers/specs/` addendum + memory):** Hero's bomb mechanics are NOT
+two charge tiers — B = single-arc throw (distance by stick tilt), hold B =
+4-bomb forward spread at shorter range, R/C-down = set bomb, double-tap = kick.
+Fixing this is sim work: intentional hash change + `TUNE_VERSION` bump +
+design doc §2 update.
 
 ## Hard invariants — breaking any of these breaks netplay
 
@@ -36,9 +53,10 @@ changes, that must be an intentional gameplay change.
 
 ## Next milestones (in order; docs §9 of arena design)
 
-1. **SDL debug viewer** (small, ROM-free): top-down flat-shape renderer +
-   gamepad input over the sim, for feel iteration. Keep it out of `src/arena/`
-   (viewer may use floats; the sim may not).
+1. **Bomb-mechanics correction** (sim, ROM-free): single-arc throw with
+   stick-tilt distance, 4-bomb spread on hold, set + kick (input bit 14 free;
+   likely new bomb state for sliding). Intentional CI-hash change +
+   `TUNE_VERSION` bump; update design doc §2 and the viewer's bindings.
 2. **A2 netcode: GekkoNet `SyncSession` wrapper** (ROM-free): couch/online/
    stress configs behind one interface; two-process localhost match as the test.
    GekkoNet: https://github.com/HeatXD/GekkoNet (BSD-2). Host = session
