@@ -29,8 +29,11 @@ static void script_inputs(ArenaInput out[ARENA_MAX_PLAYERS], uint32_t tick) {
         int sx = (int)(r & 63) - 32; if (sx < -31) sx = -31;
         int sy = (int)((r >> 6) & 63) - 32; if (sy < -31) sy = -31;
         int jump = ((r >> 12) & 31) == 0;               /* ~2/64 ticks */
-        int bomb = ((tick + i * 37) % 90) < 30;         /* held 0.5s of every 1.5s */
-        int set  = ((tick + i * 53) % 137) == 0;        /* sparse set/kick presses */
+        /* per-player hold lengths; player 3 holds past TUNE_SPREAD_TICKS so
+         * the spread path is exercised (hash-covered) every cycle */
+        int bomb = (int)((tick + (uint32_t)(i * 37)) % (uint32_t)(90 + i * 80))
+                   < (30 + i * 40);
+        int set  = ((tick + i * 53) % 137) == 0;        /* sparse set presses */
         out[i] = arena_input_pack(sx, sy, jump, bomb, set);
     }
 }

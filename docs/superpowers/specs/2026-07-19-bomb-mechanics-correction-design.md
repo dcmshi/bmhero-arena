@@ -108,3 +108,38 @@ the real game.
 - Slot pressure: 4 players × cap 6 = 24 potential > 16 bomb slots; spread
   already clamps on free slots, and `find_free_bomb` failing is handled
   (spawn skipped) — same behavior as today, now exercised more often.
+
+## 6. Post-playtest addendum (2026-07-19): decomp/ROM-verified physics
+
+Playtest feedback triggered source verification against the decomp
+([Bomberhackers/bmhero](https://github.com/Bomberhackers/bmhero),
+`src/code/69AA0.c`) and the owner's ROM. Findings, which superseded parts
+of §1:
+
+- **Throw is a fixed launch** — `func_800799A8/func_80079AD8`: velocity =
+  `moveSpeed × cos/sin(pitch) × facing` with **speed 35, pitch 80°**; no
+  stick-tilt or player-momentum term exists. §1's tilt-scaled distance was
+  removed (the guides' "distance depends on the stick" is walking-speed
+  perception; jump-throws travel farther via release *height*). Bomb
+  gravity: −2.0/frame, terminal −48 (`func_80079B60`).
+- **Spread parameters are table-driven** — `D_8010C7E4` (RAM `0x8010C7E4`,
+  extracted from the ROM at offset `0xFED04` via the splat `game` segment
+  mapping ROM `0x4DFF0` → VRAM `0x8005BAD0`): spread bombs launch at
+  **speed 28, pitch 30°**, fan rows by count 1:{0°} 2:{±10°} 3:{0°,±20°}
+  4:{±10°,±30°} (`func_8007A620` throws 1–4 via table indices 0 / 1,2 /
+  3,4,5 / 6,7,8,9). Alternate bank (indices 10+, gated by `D_80165268`):
+  speed 60, half angles — presumed powerup variant, noted for v2 items.
+- **Kick ≈ flat launch at speed 30** (pitch 0 variant in the same file) —
+  kick:throw speed ratio 6:7, recorded as an A1 calibration anchor.
+- **Kick trigger changed to walk-in** (press-kick felt clunky): running
+  into any settled bomb kicks it along the runner's facing; the setter is
+  immune until they step clear. `TUNE_KICK_RANGE`/`TUNE_KICK_CONE` were
+  removed; `TUNE_KICK_MIN_VEL` gates against zero-speed brushes.
+- **Set works mid-air** (bomb lands at the ground point below) —
+  authentic; Hero speedruns lay bombs mid-air routinely.
+- Determinism script now includes >2s holds so the spread path is
+  hash-covered; final pinned hash `4b6687d4`.
+
+Unit calibration (Hero 30Hz world units → Q20.12 @ 60Hz) still needs the
+player run-speed constant from the decomp — deferred to A1 as planned;
+`arena_tuning.h` carries the decomp anchors.

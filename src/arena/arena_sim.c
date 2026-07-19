@@ -176,20 +176,34 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
                 /* single fixed arc along facing */
                 throw_bomb(s, pi, held, p->yaw, TUNE_THROW_SPEED, TUNE_THROW_UP);
             } else {
-                /* spread: forward fan, fixed short trajectory. Offsets in
-                 * fixed order so a clamped spread stays centered. */
-                static const int16_t fan[4] = { 0x038E, -0x038E, 0x0AAA, -0x0AAA };
-                throw_bomb(s, pi, held, (uint16_t)(p->yaw + (uint16_t)fan[0]),
+                /* spread: forward fan with Hero's ROM-extracted angle rows
+                 * (D_8010C7E4): n=1 {0}, n=2 {-10,+10}, n=3 {0,-20,+20},
+                 * n=4 {-10,+10,-30,+30} degrees. A cap/slot-clamped spread
+                 * uses the authentic row for its actual count. */
+                static const int16_t fan[4][4] = {
+                    {       0,      0,       0,      0 },
+                    { -0x071C, 0x071C,       0,      0 },
+                    {       0, -0xE38,   0xE38,      0 },
+                    { -0x071C, 0x071C, -0x1555, 0x1555 },
+                };
+                int free_slots = 0;
+                for (int fi = 0; fi < ARENA_MAX_BOMBS; fi++)
+                    if (s->bombs[fi].state == BSTATE_FREE) free_slots++;
+                int extras = TUNE_MAX_LIVE_BOMBS - p->live_bombs;
+                if (extras > free_slots) extras = free_slots;
+                if (extras > 3) extras = 3;
+                if (extras < 0) extras = 0;
+                const int16_t* row = fan[extras];       /* n = extras + 1 */
+                throw_bomb(s, pi, held, (uint16_t)(p->yaw + (uint16_t)row[0]),
                            TUNE_SPREAD_SPEED, TUNE_SPREAD_UP);
-                for (int k = 1; k < 4; k++) {
-                    if (p->live_bombs >= TUNE_MAX_LIVE_BOMBS) break;
+                for (int k = 1; k <= extras; k++) {
                     int bi = find_free_bomb(s);
                     if (bi < 0) break;
                     ArenaBomb* nb = &s->bombs[bi];
                     memset(nb, 0, sizeof(*nb));
                     nb->owner = (uint8_t)pi;
                     p->live_bombs++;
-                    throw_bomb(s, pi, nb, (uint16_t)(p->yaw + (uint16_t)fan[k]),
+                    throw_bomb(s, pi, nb, (uint16_t)(p->yaw + (uint16_t)row[k]),
                                TUNE_SPREAD_SPEED, TUNE_SPREAD_UP);
                 }
             }

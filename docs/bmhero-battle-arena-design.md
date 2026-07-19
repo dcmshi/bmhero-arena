@@ -21,8 +21,14 @@
   a **fixed launch arc** along facing — no stick or momentum modifier
   (decomp-verified, `bmhero src/code/69AA0.c`: velocity = speed 35 × pitch
   80° × facing; jump-throws travel farther via release *height* only).
-  Hold ≥ ~2s to arm the **4-bomb spread** — a forward fan (±5°, ±15°) at a
-  fixed shorter trajectory. **Set** (own button, works mid-air — bomb lands
+  Hold ≥ ~2s to arm the **multi-bomb spread** — ROM-extracted (parameter
+  table `D_8010C7E4`, ROM `0xFED04`, consumed by `69AA0.c`
+  `func_8007A488`/`func_8007A620`): spread bombs launch at **speed 28,
+  pitch 30°** (vs the single throw's 35 @ 80° — flatter and quicker), with
+  progressive fan rows by count: 1 → {0°}, 2 → {±10°}, 3 → {0°, ±20°},
+  **4 → {±10°, ±30°}** (no center bomb in the 4-fan). An alternate table
+  bank (speed 60, half angles) appears to be a powerup variant — v2 items.
+  **Set** (own button, works mid-air — bomb lands
   at the ground point below; speedrun-verified authentic) lays a bomb;
   **running into any settled bomb kicks it** (setter is immune until they
   step clear) — kicked bombs slide flat (decomp: pitch-0 launch at speed

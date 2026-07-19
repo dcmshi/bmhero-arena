@@ -14,7 +14,7 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
 **A0 complete.** Headless deterministic arena sim in `src/arena/`, all tests
 green (`tests/test_determinism.c`): bit-identical replay, GekkoNet-style
 rollback stress, snapshot round-trip, liveness. Scripted-match hash pinned at
-`da70b707` (re-pinned 2026-07-19 with the bomb-mechanics correction —
+`4b6687d4` (re-pinned 2026-07-19 with the bomb-mechanics correction —
 `TUNE_VERSION` 2, first intentional gameplay change; previously `a55aa9b1`)
 — CI matrix on GitHub: https://github.com/dcmshi/bmhero-arena.
 

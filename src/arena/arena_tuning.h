@@ -30,8 +30,14 @@
 #define TUNE_THROW_SPEED     Q(0.18)    /* fixed arc, forward component */
 #define TUNE_THROW_UP        Q(0.12)
 #define TUNE_SPREAD_TICKS    120        /* hold >= this arms the 4-bomb spread */
-#define TUNE_SPREAD_SPEED    Q(0.085)   /* spread: fixed shorter trajectory */
-#define TUNE_SPREAD_UP       Q(0.09)
+/* Spread launch, ROM-extracted (table D_8010C7E4 @ ROM 0xFED04, used by
+ * 69AA0.c func_8007A488/func_8007A620): Hero spread = speed 28 pitch 30deg
+ * (vs single throw 35 @ 80deg) — flat and quick. Fan rows are in
+ * arena_sim.c. Magnitudes below are feel-scaled, ratio keeps the 30deg
+ * pitch (up/fwd = tan30). Alt table bank (speed 60, half angles) looks
+ * like a powerup variant — v2 items territory. */
+#define TUNE_SPREAD_SPEED    Q(0.095)   /* forward component */
+#define TUNE_SPREAD_UP       Q(0.055)   /* 30deg pitch ratio */
 #define TUNE_KICK_SPEED      Q(0.14)
 #define TUNE_KICK_MIN_VEL    Q(0.02)    /* walk-in kick needs real movement */
 #define TUNE_BOMB_RADIUS     Q(0.30)

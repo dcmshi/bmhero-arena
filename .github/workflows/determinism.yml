@@ -39,11 +39,12 @@ jobs:
                 int sx=(int)(r&63)-32; if(sx<-31)sx=-31;
                 int sy=(int)((r>>6)&63)-32; if(sy<-31)sy=-31;
                 int set=((t+i*53)%137)==0;
-                in[i]=arena_input_pack(sx,sy,((r>>12)&31)==0,((t+i*37)%90)<30,set);}
+                int bomb=((t+i*37)%(90+i*80))<(30+i*40);
+                in[i]=arena_input_pack(sx,sy,((r>>12)&31)==0,bomb,set);}
               arena_tick(&s,in);}
             printf("%08x\n",arena_hash(&s)); return 0;}
           EOF
           ${{ matrix.cc }} -std=c11 ${{ matrix.opt }} -I. -o hash_check hash_main.c src/arena/arena_sim.c
           h=$(./hash_check)
           echo "hash: $h"
-          test "$h" = "da70b707"
+          test "$h" = "4b6687d4"
