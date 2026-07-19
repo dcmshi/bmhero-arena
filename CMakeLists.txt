@@ -53,6 +53,10 @@ add_executable(test_netplay_link tests/test_netplay_link.c)
 target_link_libraries(test_netplay_link arena_netplay)
 add_test(NAME netplay_link COMMAND test_netplay_link)
 
+add_executable(test_netplay_stress tests/test_netplay_stress.c)
+target_link_libraries(test_netplay_stress arena_netplay)
+add_test(NAME netplay_stress COMMAND test_netplay_stress)
+
 # --- viewer pure-logic modules (no SDL; always built and tested) ---
 add_executable(test_viewer_clock tests/test_viewer_clock.c tools/viewer/viewer_clock.c)
 add_test(NAME viewer_clock COMMAND test_viewer_clock)

@@ -88,6 +88,51 @@ uint32_t sync_hash_at(const SyncSession* s, uint32_t tick) {
 }
 
 int sync_frame(SyncSession* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
-    (void)s; (void)inputs;
-    return 0;   /* Task 2 */
+    if (s->mode == SYNC_ONLINE) gekko_network_poll(s->gk);
+
+    for (int i = 0; i < s->num_players; i++) {
+        if (s->local_mask & (1u << i)) {
+            ArenaInput in = inputs[i];
+            gekko_add_local_input(s->gk, s->handle[i], &in);
+        }
+    }
+
+    int sec = 0;
+    GekkoSessionEvent** sev = gekko_session_events(s->gk, &sec);
+    for (int i = 0; i < sec; i++) {
+        switch (sev[i]->type) {
+        case GekkoSessionStarted:     s->connected = true;  break;
+        case GekkoPlayerDisconnected: s->connected = false; break;
+        case GekkoDesyncDetected:     s->desynced = true;   break;
+        default: break;
+        }
+    }
+
+    int fresh = 0, gec = 0;
+    GekkoGameEvent** gev = gekko_update_session(s->gk, &gec);
+    for (int i = 0; i < gec; i++) {
+        GekkoGameEvent* e = gev[i];
+        switch (e->type) {
+        case GekkoSaveEvent:
+            *e->data.save.state_len = (unsigned int)sizeof(ArenaState);
+            *e->data.save.checksum = arena_hash(&s->state);
+            memcpy(e->data.save.state, &s->state, sizeof(ArenaState));
+            break;
+        case GekkoLoadEvent:
+            memcpy(&s->state, e->data.load.state, sizeof(ArenaState));
+            break;
+        case GekkoAdvanceEvent: {
+            ArenaInput in[ARENA_MAX_PLAYERS] = {0, 0, 0, 0};
+            memcpy(in, e->data.adv.inputs,
+                   (size_t)s->num_players * sizeof(ArenaInput));
+            arena_tick(&s->state, in);
+            s->ring[s->state.tick & 255u].tick = s->state.tick;
+            s->ring[s->state.tick & 255u].hash = arena_hash(&s->state);
+            if (!e->data.adv.rolling_back) fresh++;
+            break;
+        }
+        default: break;
+        }
+    }
+    return fresh;
 }
