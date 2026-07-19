@@ -11,7 +11,7 @@ static float wrap_pi(float a) {
 
 void vcam_init(ViewerCam* c) {
     c->dist = 4.0f; c->height = 5.0f; c->look_up = 1.0f;   /* ~45 deg pitch */
-    c->smooth = 0.08f; c->max_turn = 0.045f;   /* ~2.6 deg/frame swing cap */
+    c->smooth = 0.05f; c->max_turn = 0.02f;    /* ~1.1 deg/frame swing cap */
     c->fov_deg = 60.0f; c->ortho_halfspan = 7.5f;
     c->yaw = 0.0f; c->topdown = 0;
     c->pos = (Vf3){0, c->height, c->dist};

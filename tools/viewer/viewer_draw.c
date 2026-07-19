@@ -192,15 +192,22 @@ void draw_scene(SDL_Renderer* r, const ViewerCam* cam, const ArenaState* s,
         g_ndraw = 0;
     }
 
-    /* boundary walls at the (possibly shrunken) extent; red in sudden death */
-    SDL_FColor wallc = (s->phase == PHASE_SUDDEN_DEATH)
-                     ? (SDL_FColor){0.55f, 0.25f, 0.25f, 1}
-                     : (SDL_FColor){0.30f, 0.34f, 0.42f, 1};
-    float wt = 0.20f, wh = 1.2f;
-    add_box_split(cam, w, h, (Vf3){-ext - wt, 0, -ext - wt}, (Vf3){ ext + wt, wh, -ext}, wallc);
-    add_box_split(cam, w, h, (Vf3){-ext - wt, 0,  ext},      (Vf3){ ext + wt, wh,  ext + wt}, wallc);
-    add_box_split(cam, w, h, (Vf3){-ext - wt, 0, -ext},      (Vf3){-ext,      wh,  ext}, wallc);
-    add_box_split(cam, w, h, (Vf3){ ext,      0, -ext},      (Vf3){ ext + wt, wh,  ext}, wallc);
+    /* boundary walls at the (possibly shrunken) extent; red in sudden death.
+     * Also background-layer: everything lives INSIDE the ring, so a wall can
+     * never legitimately occlude an entity — flushing them before entities
+     * kills the wall-over-sphere flicker when hugging a wall. */
+    {
+        SDL_FColor wallc = (s->phase == PHASE_SUDDEN_DEATH)
+                         ? (SDL_FColor){0.55f, 0.25f, 0.25f, 1}
+                         : (SDL_FColor){0.30f, 0.34f, 0.42f, 1};
+        float wt = 0.20f, wh = 1.2f;
+        add_box_split(cam, w, h, (Vf3){-ext - wt, 0, -ext - wt}, (Vf3){ ext + wt, wh, -ext}, wallc);
+        add_box_split(cam, w, h, (Vf3){-ext - wt, 0,  ext},      (Vf3){ ext + wt, wh,  ext + wt}, wallc);
+        add_box_split(cam, w, h, (Vf3){-ext - wt, 0, -ext},      (Vf3){-ext,      wh,  ext}, wallc);
+        add_box_split(cam, w, h, (Vf3){ ext,      0, -ext},      (Vf3){ ext + wt, wh,  ext}, wallc);
+        flush_drawables(r);
+        g_ndraw = 0;
+    }
 
     /* pillars */
     for (int i = 0; i < g->num_pillars; i++) {

@@ -48,7 +48,7 @@ int main(void) {
     CHECK(NEAR(c.yaw, c.max_turn, 1e-4f), "turn speed capped at max_turn/update");
     /* small corrections (normal forward running) are NOT rate-limited */
     vcam_init(&c);
-    c.yaw = 0.0f; c.smooth = 0.25f;
+    c.yaw = 0.0f; c.smooth = 0.25f; c.max_turn = 1.0f;  /* isolate proportional */
     vcam_update(&c, (Vf3){0, 0, 0}, 0.1f);
     CHECK(NEAR(c.yaw, 0.025f, 1e-4f), "small diffs use proportional follow");
 
