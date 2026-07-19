@@ -90,7 +90,10 @@ if(SDL3_FOUND)
   target_link_libraries(arena_viewer arena_netplay SDL3::SDL3)
   if(NOT MSVC)
     target_link_libraries(arena_viewer m)
-    target_link_options(arena_viewer PRIVATE -static-libgcc)
+    # -static: MinGW runtimes (libgcc/libstdc++/winpthread) go static so the
+    # exe runs outside the MSYS2 shell; SDL3 stays a DLL (import lib) and is
+    # copied beside the exe below.
+    target_link_options(arena_viewer PRIVATE -static)
   endif()
   if(WIN32)
     # copy SDL3.dll (and friends) beside the exe so it runs outside the
