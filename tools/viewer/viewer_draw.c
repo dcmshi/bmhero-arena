@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "viewer_draw.h"
+#include "viewer_font8.h"   /* font8x8_basic[128][8], public domain */
 
 /* ------------------------------------------------- unified painter list */
 
@@ -241,11 +242,49 @@ void draw_facing(SDL_Renderer* r, const ViewerCam* cam, const ArenaState* s,
     }
 }
 
-/* HUD is implemented in Task 8; stubs keep the link happy. */
 void draw_text(SDL_Renderer* r, float x, float y, float scale, const char* str) {
-    (void)r; (void)x; (void)y; (void)scale; (void)str;
+    SDL_SetRenderDrawColor(r, 235, 235, 235, 255);
+    SDL_FRect px = {0, 0, scale, scale};
+    for (; *str; str++, x += 8 * scale) {
+        unsigned ch = (unsigned char)*str;
+        if (ch >= 128) continue;
+        for (int row = 0; row < 8; row++) {
+            unsigned bits = (unsigned char)font8x8_basic[ch][row];
+            for (int col = 0; col < 8; col++)
+                if (bits & (1u << col)) {
+                    px.x = x + (float)col * scale;
+                    px.y = y + (float)row * scale;
+                    SDL_RenderFillRect(r, &px);
+                }
+        }
+    }
 }
+
 void draw_hud(SDL_Renderer* r, const ArenaState* s, const ViewerClock* clk,
               const ViewerCam* cam, int cam_target, int w, int h) {
-    (void)r; (void)s; (void)clk; (void)cam; (void)cam_target; (void)w; (void)h;
+    static const char* pstate[] = {"IDLE", "RUN ", "JUMP", "TUMB", "DEAD"};
+    static const char* phase[]  = {"COUNTDOWN", "PLAY", "SUDDEN-DEATH", "ROUND-END"};
+    static const char* rate[]   = {"1x", "1/4x", "1/16x"};
+    char line[160];
+    (void)w;
+
+    snprintf(line, sizeof line, "TICK %-8u HASH %08x  %s %d  RATE %s%s  CAM P%d %s",
+             s->tick, arena_hash(s), phase[s->phase], (int)s->phase_timer,
+             rate[clk->rate], clk->paused ? " PAUSED" : "",
+             cam_target, cam->topdown ? "TOP" : "CHASE");
+    draw_text(r, 8, 8, 2, line);
+
+    for (int i = 0; i < s->num_players; i++) {
+        const ArenaPlayer* p = &s->players[i];
+        snprintf(line, sizeof line,
+                 "P%d %s hp%d pos %+6.2f %+6.2f %+6.2f vel %+5.2f %+5.2f %+5.2f bombs %d t%d",
+                 i, pstate[p->state], (int)p->hp,
+                 QF(p->pos.x), QF(p->pos.y), QF(p->pos.z),
+                 QF(p->vel.x), QF(p->vel.y), QF(p->vel.z),
+                 (int)p->live_bombs, (int)p->timer);
+        draw_text(r, 8, 8 + 20 * (float)(i + 1), 2, line);
+    }
+
+    draw_text(r, 8, (float)h - 24, 2,
+              "P pause  ] step  [ rate  R reset  TAB cam  F1 view  G grid  ESC quit");
 }
