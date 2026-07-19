@@ -17,6 +17,8 @@ Design docs: `bmhero-multiplayer-architecture.md`, `bmhero-battle-arena-design.m
     tools/viewer/             SDL3 debug viewer (dev tool; floats OK here): play the sim
                               with keyboard/gamepad, camera modes (F1), pause/step/slow-mo,
                               HUD with live state hash, --frames N deterministic smoke flag
+    src/netplay/              SyncSession: one GekkoNet wrapper, three configs
+                              (couch / online / stress); owns ArenaState + tick
 
 ## Build & test
 
@@ -26,6 +28,8 @@ Design docs: `bmhero-multiplayer-architecture.md`, `bmhero-battle-arena-design.m
 
     # debug viewer (built automatically when SDL3 is found; see toolchain below):
     ./build/arena_viewer
+    # online (2P localhost): window 1: --host 7101 --peer 127.0.0.1:7102
+    #                        window 2: --join 127.0.0.1:7101 --port 7102
 
 ## Invariants (do not break)
 

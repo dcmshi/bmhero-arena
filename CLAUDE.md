@@ -18,6 +18,17 @@ rollback stress, snapshot round-trip, liveness. Scripted-match hash pinned at
 `TUNE_VERSION` 2, first intentional gameplay change; previously `a55aa9b1`)
 — CI matrix on GitHub: https://github.com/dcmshi/bmhero-arena.
 
+**A2 SyncSession complete (2026-07-19).** `src/netplay/` wraps GekkoNet
+(FetchContent, pinned tag `v20260629200724-02c447c`, BSD-2) behind one C
+interface — couch/online/stress — the session owns `ArenaState` and is the
+sole `arena_tick` caller. Gates: GekkoNet stress session (continuous
+rollback re-sim, 3600 ticks clean) + two-process localhost match with
+matching confirmed hashes (`p2p tick 600 hash bbf9c071`), both in ctest and
+the `netcode` CI job (ubuntu+windows). Viewer drives matches through the
+session (couch default; `--host <port> --peer <addr>` / `--join <addr>
+--port <p>` for 2P online; `--frames` smoke stays sessionless, hash
+`eeeb76f6`). Spec: `docs/superpowers/specs/2026-07-19-a2-syncsession-design.md`.
+
 **Bomb mechanics are Hero-authentic (2026-07-19).** Fixed-arc throw (no
 stick/momentum modifier — decomp-verified in `bmhero src/code/69AA0.c`:
 speed 35 / pitch 80° / facing only; kick = flat launch at speed 30), 4-bomb
@@ -56,16 +67,15 @@ changes, that must be an intentional gameplay change.
 
 ## Next milestones (in order; docs §9 of arena design)
 
-1. **A2 netcode: GekkoNet `SyncSession` wrapper** (ROM-free): couch/online/
-   stress configs behind one interface; two-process localhost match as the test.
-   GekkoNet: https://github.com/HeatXD/GekkoNet (BSD-2). Host = session
-   authority, full-mesh inputs, host-relay fallback (arena doc §6).
-2. **A1 render bridge + feel** (needs user's ROM + local BMHeroRecomp build,
+1. **A1 render bridge + feel** (needs user's ROM + local BMHeroRecomp build,
    fork of https://github.com/RevoSucks/BMHeroRecomp): spawn/puppet `gObjects`
    entries; transcribe every `TODO(feel)` constant in `arena_tuning.h` from the
    decomp (https://github.com/Bomberhackers/bmhero — start at `gPlayerObject`
    usage and the object update dispatch over `gObjects[207]`; Hack64 wiki has
    supplementary RE notes). Constants go only in `arena_tuning.h`.
+2. **A3 online hardening** (ROM-free): rendezvous server + lobby codes,
+   host-relay fallback via a custom GekkoNet adapter, 4P mesh WAN soak,
+   desync surfacing UI, automatic player-slot assignment (arena doc §6).
 
 ## Repo plan
 

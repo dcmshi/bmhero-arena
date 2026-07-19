@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmake *)",
+      "Bash(ctest *)",
+      "Bash(gcc *)",
+      "Bash(./build/arena_viewer.exe *)",
+      "Bash(bash tests/run_p2p_test.sh *)",
+      "PowerShell(Get-Process *)",
+      "PowerShell($env:MSYSTEM='UCRT64'; C:\\msys64\\usr\\bin\\bash.exe -lc *)",
+      "PowerShell(Start-Process -FilePath \"C:\\Users\\dshi\\GitRepos\\bmhero-arena\\build\\arena_viewer.exe\" *)"
+    ]
+  }
+}
