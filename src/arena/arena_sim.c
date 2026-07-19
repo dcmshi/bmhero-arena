@@ -201,6 +201,44 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
         }
     }
 
+    /* set / kick (edge on bit 14): kick a settled bomb in front, else set.
+     * Kick wins; one press = one action. Ground-only, not while holding. */
+    if (gameplay && p->state != PSTATE_TUMBLE && p->held_bomb == 0
+        && on_ground(p) && arena_input_set(in) && !arena_input_set(prev)) {
+        int kicked = 0;
+        for (int bi = 0; bi < ARENA_MAX_BOMBS; bi++) {     /* fixed order */
+            ArenaBomb* b = &s->bombs[bi];
+            if (b->state != BSTATE_SETTLED) continue;
+            q32 dx = b->pos.x - p->pos.x, dz = b->pos.z - p->pos.z;
+            q32 dist = qlen2(dx, dz);
+            if (dist > TUNE_KICK_RANGE) continue;
+            if (dist >= TUNE_PLAYER_RADIUS) {   /* cone check unless underfoot */
+                int16_t rel = (int16_t)(uint16_t)(iatan2(dx, -dz) - p->yaw);
+                if (rel > TUNE_KICK_CONE || rel < -TUNE_KICK_CONE) continue;
+            }
+            b->state   = BSTATE_SLIDING;
+            b->pos.y   = 0;
+            b->vel.x   =  qmul(qsin(p->yaw), TUNE_KICK_SPEED);
+            b->vel.y   = 0;
+            b->vel.z   = -qmul(qcos(p->yaw), TUNE_KICK_SPEED);
+            b->bounced = (uint8_t)(pi + 1);     /* kicker grace, cleared on exit */
+            kicked = 1;
+            break;
+        }
+        if (!kicked && p->live_bombs < TUNE_MAX_LIVE_BOMBS) {
+            int bi = find_free_bomb(s);
+            if (bi >= 0) {
+                ArenaBomb* b = &s->bombs[bi];
+                memset(b, 0, sizeof(*b));
+                b->owner = (uint8_t)pi;
+                b->state = BSTATE_SETTLED;
+                b->fuse  = TUNE_FUSE_TICKS;
+                b->pos   = p->pos; b->pos.y = 0;
+                p->live_bombs++;
+            }
+        }
+    }
+
     /* gravity + integrate */
     p->vel.y -= TUNE_GRAVITY;
     p->pos.x += p->vel.x; p->pos.y += p->vel.y; p->pos.z += p->vel.z;
@@ -319,6 +357,50 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
             }
             break;
         }
+        case BSTATE_SLIDING: {
+            b->pos.x += b->vel.x; b->pos.z += b->vel.z;
+            /* players: contact detonates (kicker skipped until clear) */
+            for (int pj = 0; pj < s->num_players; pj++) {
+                const ArenaPlayer* p = &s->players[pj];
+                if (p->state == PSTATE_DEAD) continue;
+                if (p->pos.y > 2 * TUNE_BOMB_RADIUS) continue;   /* jumped over */
+                q32 dist = qlen2(b->pos.x - p->pos.x, b->pos.z - p->pos.z);
+                q32 touch = TUNE_PLAYER_RADIUS + TUNE_BOMB_RADIUS;
+                if (b->bounced == (uint8_t)(pj + 1)) {           /* kicker grace */
+                    if (dist >= touch + Q(0.1)) b->bounced = 0;
+                    continue;
+                }
+                if (dist < touch) { b->state = BSTATE_EXPLODING; break; }
+            }
+            if (b->state != BSTATE_SLIDING) break;
+            /* other live ground bombs: contact detonates (chain) */
+            for (int bj = 0; bj < ARENA_MAX_BOMBS; bj++) {
+                const ArenaBomb* ob = &s->bombs[bj];
+                if (bj == i) continue;
+                if (ob->state != BSTATE_SETTLED && ob->state != BSTATE_SLIDING)
+                    continue;
+                if (qlen2(b->pos.x - ob->pos.x, b->pos.z - ob->pos.z)
+                    < 2 * TUNE_BOMB_RADIUS) {
+                    b->state = BSTATE_EXPLODING;
+                    break;
+                }
+            }
+            if (b->state != BSTATE_SLIDING) break;
+            /* walls / pillars: any pushback = contact = detonate */
+            {
+                Vec3q pre_p = b->pos, pre_v = b->vel;
+                collide_static(&b->pos, &b->vel, TUNE_BOMB_RADIUS, g, wall_extent);
+                if (b->pos.x != pre_p.x || b->pos.z != pre_p.z
+                    || b->vel.x != pre_v.x || b->vel.z != pre_v.z)
+                    b->state = BSTATE_EXPLODING;
+            }
+            /* fuse keeps burning while sliding */
+            if (b->state == BSTATE_SLIDING) {
+                if (b->fuse > 0) b->fuse--;
+                if (b->fuse == 0) b->state = BSTATE_EXPLODING;
+            }
+            break;
+        }
         case BSTATE_SETTLED:
             if (b->fuse > 0) b->fuse--;
             if (b->fuse == 0) b->state = BSTATE_EXPLODING;
@@ -341,7 +423,8 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
         /* chain-detonate bombs in radius (next pass picks up EXPLODING) */
         for (int bi = 0; bi < ARENA_MAX_BOMBS; bi++) {
             ArenaBomb* b = &s->bombs[bi];
-            if (b->state != BSTATE_SETTLED && b->state != BSTATE_AIRBORNE) continue;
+            if (b->state != BSTATE_SETTLED && b->state != BSTATE_AIRBORNE
+                && b->state != BSTATE_SLIDING) continue;
             Vec3q d = { b->pos.x - bl->center.x, b->pos.y - bl->center.y,
                         b->pos.z - bl->center.z };
             if (qlen3(d) < radius + TUNE_BOMB_RADIUS) b->state = BSTATE_EXPLODING;

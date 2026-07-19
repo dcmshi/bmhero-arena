@@ -41,7 +41,8 @@ static inline int arena_input_set(ArenaInput i)  { return (i >> 14) & 1; }
 
 /* ---- enums (u8 in state) ---- */
 enum { PSTATE_IDLE, PSTATE_RUN, PSTATE_JUMP, PSTATE_TUMBLE, PSTATE_DEAD };
-enum { BSTATE_FREE, BSTATE_HELD, BSTATE_AIRBORNE, BSTATE_SETTLED, BSTATE_EXPLODING };
+enum { BSTATE_FREE, BSTATE_HELD, BSTATE_AIRBORNE, BSTATE_SETTLED, BSTATE_EXPLODING,
+       BSTATE_SLIDING };
 enum { PHASE_COUNTDOWN, PHASE_PLAY, PHASE_SUDDEN_DEATH, PHASE_ROUND_END };
 
 typedef struct {                 /* 44 bytes */
