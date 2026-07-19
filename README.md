@@ -14,12 +14,18 @@ Design docs: `bmhero-multiplayer-architecture.md`, `bmhero-battle-arena-design.m
     src/arena/arena_geom.h    static arena geometry (not in state; hashed into version handshake)
     src/arena/arena_sim.c     the tick pipeline (fixed order = determinism contract)
     tests/test_determinism.c  replay, rollback-stress, snapshot, liveness gates
+    tools/viewer/             SDL3 debug viewer (dev tool; floats OK here): play the sim
+                              with keyboard/gamepad, camera modes (F1), pause/step/slow-mo,
+                              HUD with live state hash, --frames N deterministic smoke flag
 
 ## Build & test
 
     cmake -S . -B build && cmake --build build && ctest --test-dir build
     # or simply:
     gcc -std=c11 -O2 -o test src/arena/arena_sim.c tests/test_determinism.c && ./test
+
+    # debug viewer (built automatically when SDL3 is found; see toolchain below):
+    ./build/arena_viewer
 
 ## Invariants (do not break)
 
