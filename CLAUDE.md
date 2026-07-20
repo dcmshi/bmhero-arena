@@ -18,6 +18,17 @@ rollback stress, snapshot round-trip, liveness. Scripted-match hash pinned at
 `TUNE_VERSION` 2, first intentional gameplay change; previously `a55aa9b1`)
 — CI matrix on GitHub: https://github.com/dcmshi/bmhero-arena.
 
+**A1.1a complete (2026-07-19).** `bmhero-arena` is a submodule of the fork at
+`lib/bmhero-arena`; `arena_sim.c` compiles natively into `BMHeroRecompiled`
+(clang-cl), and a fork-owned `src/arena_bridge/` ticks a silent-passenger
+`ArenaState` from the recomp's native VI callback (`main.cpp`), logging
+`[arena] tick N hash H` to console + `arena_bridge.log` each second —
+verified advancing (60/120/180…) and deterministic across runs
+(tick 120 → `b6272ae5`). **No MIPS patch needed** — the native VI hook is the
+design's tick edge, dissolving the spec's "which per-frame function to patch"
+risk. Fork branch `feature/a1.1a-arena-proof`. Next: A1.1b Battle menu entry
+(+ warp-into-map), A1.1c spawn suppression, A1.2 render bridge.
+
 **A1.0 complete (2026-07-19).** Fork `dcmshi/BMHeroRecomp` builds locally and
 boots the campaign (intro + level play confirmed) at
 `C:\Users\dshi\GitRepos\BMHeroRecomp`. Repo decision: `bmhero-arena` stays
@@ -89,8 +100,10 @@ changes, that must be an intentional gameplay change.
 
 ## Next milestones (in order; docs §9 of arena design)
 
-1. **A1 render bridge + feel** — *A1.0 done (fork builds + boots).* Remaining:
-   **A1.1** arena submodule + Battle menu entry + map-shell load; **A1.2**
+1. **A1 render bridge + feel** — *A1.0 done (fork builds + boots); A1.1a done
+   (arena submodule ticks natively in the recomp, proof-of-life).* Remaining:
+   **A1.1b** Battle menu entry + warp-into-map, **A1.1c** spawn suppression;
+   **A1.2**
    render bridge spawning/puppeting `gObjects` entries from `ArenaState`;
    **A1.3** transcribe every `TODO(feel)` constant in `arena_tuning.h` from the
    decomp (https://github.com/Bomberhackers/bmhero — start at `gPlayerObject`
