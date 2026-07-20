@@ -138,8 +138,14 @@ changes, that must be an intentional gameplay change.
    (arena submodule ticks natively in the recomp); A1.1b done (Battle menu
    entry + battle-mode flag); A1.1b-ii done (Battle warps into
    MAP_BATTLE_ROOM); A1.1c dropped (room already clean; frontend-skip deferred
-   as fragile/low-ROI).* Remaining: **A1.2**
-   render bridge spawning/puppeting `gObjects` entries from `ArenaState`;
+   as fragile/low-ROI).* Remaining:
+   **A1.2 render bridge** — A1.2a puppet `gObjects[0]` from `ArenaState`
+   (in progress) → A1.2b spawn+puppet 4 bombers → A1.2c bombs/blasts →
+   anim/HUD/camera. Render writes into `gObjects` entries from `ArenaState`
+   (mapping Q20.12 → Hero float coords).
+   **Side task — arena-shell eval:** try a Nitros boss room as a bigger arena
+   (verify direct-warp loads clean, suppress the boss, swap `ARENA_WARP_MAP`;
+   currently `MAP_BATTLE_ROOM`).
    **A1.3** transcribe every `TODO(feel)` constant in `arena_tuning.h` from the
    decomp (https://github.com/Bomberhackers/bmhero — start at `gPlayerObject`
    usage and the object update dispatch over `gObjects[207]`; Hack64 wiki has

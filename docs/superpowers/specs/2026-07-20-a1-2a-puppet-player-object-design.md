@@ -67,6 +67,12 @@ patch writes `gObjects[0]`. One-way; the sim never reads game state.
 - Player model/color per index → A1.2b (one puppet here uses the existing
   player model).
 - Hiding Hero's HUD, camera framing for the arena → later.
+- **Arena shell map stays `MAP_BATTLE_ROOM`** (clean + proven). Evaluating a
+  larger boss arena (user suggestion: Nitros — big open combat space, minimal
+  assets besides the boss) is a **dedicated follow-up task**: verify it
+  direct-warps cleanly, suppress the boss spawn, swap `ARENA_WARP_MAP`. Kept
+  out of A1.2a because the render bridge is map-agnostic and a boss room
+  revives the spawn-suppression RE A1.1c deferred.
 - Fully suppressing Hero's own player physics → only if the overwrite
   visibly fights (see §6); default is overwrite-after-update.
 - No changes to `bmhero-arena` sim code (pinned hash `4b6687d4`).
