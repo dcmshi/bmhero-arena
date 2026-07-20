@@ -27,10 +27,18 @@ that seeds the next-level var + spawn from `gCurrentLevel`, called from 9
 level-transition handlers) override `gCurrentLevel` before the loader reads
 it; non-battle launches unchanged. First `patches/` change since A1.0
 (LLVM-15 MIPS). Verified by boot gate (Battle → Battle Room). Fork branch
-`feature/a1.1b-ii-map-warp`. **Known friction:** Battle still walks the full
-frontend (intro → file select) before the warp fires — jumping straight to
-the arena is a follow-up. Next: A1.1c suppress the shell map's own object
-spawns, then A1.2 render bridge.
+`feature/a1.1b-ii-map-warp`.
+
+**A1.1c dropped/deferred (2026-07-20, decided during brainstorming).** Two
+findings collapsed it: (1) the Battle Room is already a clean versus arena —
+**no campaign enemies to suppress** (only the campaign player object + HUD,
+which are A1.2 render-bridge concerns); (2) the intro→file-select frontend
+skip is deep, fragile RE — it lives inside `func_80083180`, a giant
+"not reducible" goto state machine with no clean patch seam, and it's a UX
+nicety, not a blocker. Deferred in favor of A1.2. Revisit the frontend-skip
+later (lightweight input-injection or state-machine RE) if the friction
+matters. Next: **A1.2 render bridge** — write `ArenaState` into `gObjects`
+so Hero draws our 4 bombers in the Battle Room.
 
 **A1.1b complete (2026-07-19).** The recomp launcher has a **Battle** option
 (`on_launcher_init`, `main.cpp`) that sets a native battle-mode flag
@@ -129,9 +137,8 @@ changes, that must be an intentional gameplay change.
 1. **A1 render bridge + feel** — *A1.0 done (fork builds + boots); A1.1a done
    (arena submodule ticks natively in the recomp); A1.1b done (Battle menu
    entry + battle-mode flag); A1.1b-ii done (Battle warps into
-   MAP_BATTLE_ROOM).* Remaining: **A1.1c** suppress the shell map's own object
-   spawns (+ optionally skip the frontend so Battle jumps straight to the
-   arena); **A1.2**
+   MAP_BATTLE_ROOM); A1.1c dropped (room already clean; frontend-skip deferred
+   as fragile/low-ROI).* Remaining: **A1.2**
    render bridge spawning/puppeting `gObjects` entries from `ArenaState`;
    **A1.3** transcribe every `TODO(feel)` constant in `arena_tuning.h` from the
    decomp (https://github.com/Bomberhackers/bmhero — start at `gPlayerObject`
