@@ -18,6 +18,18 @@ rollback stress, snapshot round-trip, liveness. Scripted-match hash pinned at
 `TUNE_VERSION` 2, first intentional gameplay change; previously `a55aa9b1`)
 — CI matrix on GitHub: https://github.com/dcmshi/bmhero-arena.
 
+**A1.1b complete (2026-07-19).** The recomp launcher has a **Battle** option
+(`on_launcher_init`, `main.cpp`) that sets a native battle-mode flag
+(`arena_bridge_set_battle_mode`) then launches via `recomp::start_game` — same
+path as Start Game, gated on `recomp::is_rom_valid`. The per-VI proof log
+distinguishes battle (`[arena] BATTLE MODE tick N …`) from normal; confirmed
+by boot gate (Battle → BATTLE MODE, still lands in single-player campaign as
+expected — the destination warp is A1.1b-ii). Convenience `play.bat` in the
+fork root launches from the repo root so `assets/` resolves (raw double-click
+of the exe crashes `0xC0000409`). Fork branch `feature/a1.1b-battle-menu`.
+The battle flag is the seam A1.1b-ii (warp to a dedicated arena map) and A1.2
+(render bridge) build on. Next: A1.1b-ii forced map-shell warp.
+
 **A1.1a complete (2026-07-19).** `bmhero-arena` is a submodule of the fork at
 `lib/bmhero-arena`; `arena_sim.c` compiles natively into `BMHeroRecompiled`
 (clang-cl), and a fork-owned `src/arena_bridge/` ticks a silent-passenger
@@ -101,9 +113,9 @@ changes, that must be an intentional gameplay change.
 ## Next milestones (in order; docs §9 of arena design)
 
 1. **A1 render bridge + feel** — *A1.0 done (fork builds + boots); A1.1a done
-   (arena submodule ticks natively in the recomp, proof-of-life).* Remaining:
-   **A1.1b** Battle menu entry + warp-into-map, **A1.1c** spawn suppression;
-   **A1.2**
+   (arena submodule ticks natively in the recomp); A1.1b done (Battle menu
+   entry + battle-mode flag).* Remaining: **A1.1b-ii** warp into a dedicated
+   arena map (map-shell load), **A1.1c** spawn suppression; **A1.2**
    render bridge spawning/puppeting `gObjects` entries from `ArenaState`;
    **A1.3** transcribe every `TODO(feel)` constant in `arena_tuning.h` from the
    decomp (https://github.com/Bomberhackers/bmhero — start at `gPlayerObject`
