@@ -18,6 +18,20 @@ rollback stress, snapshot round-trip, liveness. Scripted-match hash pinned at
 `TUNE_VERSION` 2, first intentional gameplay change; previously `a55aa9b1`)
 — CI matrix on GitHub: https://github.com/dcmshi/bmhero-arena.
 
+**A1.1b-ii complete (2026-07-20).** Battle launch warps into `MAP_BATTLE_ROOM`
+(Hero's own dedicated arena — loads cleanly on direct entry, no fallback
+needed) instead of the campaign level. Mechanism: `arena_bridge_is_battle`
+native export (`syms.ld` `0x8F000124` + `REGISTER_FUNC`) lets
+`patches/arena_warp.c` `RECOMP_PATCH` `func_80081C50` (the level-load prep
+that seeds the next-level var + spawn from `gCurrentLevel`, called from 9
+level-transition handlers) override `gCurrentLevel` before the loader reads
+it; non-battle launches unchanged. First `patches/` change since A1.0
+(LLVM-15 MIPS). Verified by boot gate (Battle → Battle Room). Fork branch
+`feature/a1.1b-ii-map-warp`. **Known friction:** Battle still walks the full
+frontend (intro → file select) before the warp fires — jumping straight to
+the arena is a follow-up. Next: A1.1c suppress the shell map's own object
+spawns, then A1.2 render bridge.
+
 **A1.1b complete (2026-07-19).** The recomp launcher has a **Battle** option
 (`on_launcher_init`, `main.cpp`) that sets a native battle-mode flag
 (`arena_bridge_set_battle_mode`) then launches via `recomp::start_game` — same
@@ -114,8 +128,10 @@ changes, that must be an intentional gameplay change.
 
 1. **A1 render bridge + feel** — *A1.0 done (fork builds + boots); A1.1a done
    (arena submodule ticks natively in the recomp); A1.1b done (Battle menu
-   entry + battle-mode flag).* Remaining: **A1.1b-ii** warp into a dedicated
-   arena map (map-shell load), **A1.1c** spawn suppression; **A1.2**
+   entry + battle-mode flag); A1.1b-ii done (Battle warps into
+   MAP_BATTLE_ROOM).* Remaining: **A1.1c** suppress the shell map's own object
+   spawns (+ optionally skip the frontend so Battle jumps straight to the
+   arena); **A1.2**
    render bridge spawning/puppeting `gObjects` entries from `ArenaState`;
    **A1.3** transcribe every `TODO(feel)` constant in `arena_tuning.h` from the
    decomp (https://github.com/Bomberhackers/bmhero — start at `gPlayerObject`
