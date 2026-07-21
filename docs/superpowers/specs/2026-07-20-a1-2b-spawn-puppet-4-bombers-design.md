@@ -72,19 +72,21 @@ drawing is dispatched through ~15 `func_800…` calls inside `func_800821E0`
 (the draw routine), and the per-model draw may be an irreducible / `GLOBAL_ASM`
 function with no clean `RECOMP_PATCH` seam.
 
-Therefore palette-tint is a **time-boxed investigation, not a guarantee**. If a
-reducible per-object seam is found, apply the four colors. If not, stop and
-fall back in order, flagging which occurred:
-1. **Different existing models** — puppet 4 visually distinct bomber-type
-   models already in the ROM (candidates: `OBJ_PLAYER`, `OBJ_MIR_BOMBER` 392,
-   `OBJ_GHOSTMAN` 367, `OBJ_EVBOMBER` 614) so they're distinguishable without
-   palette RE. (Also the natural home if the spawn spike already forces
-   non-`OBJ_PLAYER` models for behaviour reasons — §3.)
-2. **Same model, color deferred** — all four as the player model; palette
-   becomes its own follow-up once spawn+puppet is solid.
+**Primary approach:** same (player) model for all four, tinted per player via
+`gDPSetPrimColor`. This is a **time-boxed investigation, not a guarantee** — if
+a reducible per-object seam is found, apply the four colors.
+
+**Single fallback (if the seam is irreducible):** puppet 4 visually distinct
+bomber-type models already in the ROM (candidates: `OBJ_PLAYER`,
+`OBJ_MIR_BOMBER` 392, `OBJ_GHOSTMAN` 367, `OBJ_EVBOMBER` 614) so they're
+distinguishable without palette RE. (Also the natural home if the spawn spike
+already forces non-`OBJ_PLAYER` models for behaviour reasons — §3.) Either way
+the slice ends with **4 distinguishable bombers** — there is no identical-bomber
+end state.
 
 This keeps the risky draw-path RE from stalling the slice: steps 1–3 deliver
-"4 bombers moving per the sim" independent of the tint outcome.
+"4 bombers moving per the sim" independent of the tint outcome, and the tint-vs-
+models decision only affects appearance, not whether the slice ships.
 
 ## 5. Sequenced steps (each independently verifiable on screen)
 
@@ -134,8 +136,8 @@ This keeps the risky draw-path RE from stalling the slice: steps 1–3 deliver
 All are plan-discovery with concrete fallbacks:
 1. **Spawn behaviour interference** (§3) — spike reveals it; fallback is a
    benign model or neutralized behaviour pointer.
-2. **Palette seam may be irreducible** (§4) — time-boxed; fallback to distinct
-   models, then to deferred color.
+2. **Palette seam may be irreducible** (§4) — time-boxed; single fallback to
+   4 distinct models (always ends with distinguishable bombers).
 3. **Free-slot contention** — assumes the Battle Room leaves slots 2–5 free
    (integration notes: room is "already a clean versus arena"). If the room
    pre-populates some, the spike surfaces it; fallback is a wider pool or a
