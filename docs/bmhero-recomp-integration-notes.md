@@ -37,6 +37,26 @@ Everything here is verified against the decomp at fork `master` as of 2026-07-20
   `patches/` (composed PATH, LLVM-15) before the cmake build — ninja does NOT
   reliably re-run the patch make, and a stale `patches.elf` against new native
   code crashes with an ABI/logic mismatch that *looks* like a code bug.
+- **Patches must be STATELESS** (A1.2b, 2026-07-21): a static patch cannot use
+  file-scope mutable `static`/global variables it writes to — doing so aborts
+  the game (`0xC0000409` / `FAST_FAIL_FATAL_APP_EXIT`) the moment the patch runs.
+  The static-patch path doesn't set up patch-local `.data`/`.bss` (the mod
+  loader does, but these aren't mods). Keep ALL mutable state in native
+  `arena_bridge.cpp`, exposed via exports; the patch only reads game globals,
+  calls exports, and writes game objects. Writing **game** globals/objects is
+  fine (fixed RAM addresses). Memory: `recomp-patch-stateless`.
+- **Crash forensics:** dumps land in `%LOCALAPPDATA%\CrashDumps\
+  BMHeroRecompiled.exe.*.dmp` (WER). Analyze with `cdb`
+  (`C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe`, from
+  `winget install Microsoft.WindowsSDK`):
+  `cdb -z <dmp> -y "srv*C:\sym*https://msdl.microsoft.com/download/symbols" -c
+  ".ecxr; r; kb 20; q"`. No PDB for the exe, so recomp'd frames show as
+  `BMHeroRecompiled+0xNNNNN`, but the fault type is decisive: **`0xC0000409`**
+  (FATAL_APP_EXIT via abort/terminate) = the recomp/game hit an invalid op and
+  bailed; **`0xC0000005`** = a wild pointer deref in recomp'd code. rdram maps
+  as `rdram + (gameaddr - 0x80000000)` (`TO_PTR`, `ultra64.h`), so a native
+  shim can read/write game RAM directly (raw byte copies between 4-aligned
+  regions preserve byte order).
 
 ## 2. Per-frame hook points (where to run each frame, in-level)
 
@@ -126,3 +146,70 @@ Everything here is verified against the decomp at fork `master` as of 2026-07-20
   `lib/bmhero/include/map_ids.h`; the dedicated battle rooms (2–6) load cleanly on
   direct entry. A bigger boss arena (Nitros) is a candidate side task but revives
   boss/spawn suppression + warp verification.
+
+## 8. Object system & multi-actor rendering — A1.2b findings (BLOCKED)
+
+Getting 3 MORE bombers on screen (A1.2b) is a **substantial RE sub-project**, not
+a small addition. A1.2a's single player-0 puppet works; every naive route to
+extra actors was tried and fails. Recorded so the next attempt starts warm.
+
+**Battle Room object table** (dumped live, `arena_dbg_dump` → `arena_bridge.log`):
+- slot 0 = the player (`objID 0`, `gPlayerObject`), slot 1 = arm/wind helper
+  (`gPlayerArmWindObject`), **slots 2–13 free** (`actionState == ACTION_NONE`),
+  slot 14 = a door (`OBJ_TOBIRA1_O` 77), slot 15 = a floor plate (`OBJ_RPLATE`
+  85). The **only resident bomber-shaped model is the player** (slot 0); no
+  other bomber models' assets are loaded.
+
+**Why the naive routes fail:**
+- **Clone the player object** into a free slot → its per-frame UPDATE is
+  single-player logic; running it on a 2nd `OBJ_PLAYER` aborts. Draw-only (flip
+  active just around the draw) → the draw needs update-computed render state, so
+  it feeds a bad display list to the RSP → graphics-worker access violation /
+  recomp fatal.
+- **Clone a simple resident object** (door/plate) with normal update → it
+  RENDERS at the sim position (proves the bridge!), but the raw `memcpy` copies
+  the object's **spawn-group cross-reference indices** (`unk10E[10]` @ 0x10E,
+  also `unkE6`/`Unk140`) which point at the source's slot group. The update/draw
+  follows them → bad-pointer crash. Those links are needed to draw yet invalid
+  for a duplicate; clearing `unk10E` to −1 (per `func_800272E8`, the unlink
+  routine, `26CE0.c:305`) makes it crash *earlier* (breaks the draw). **Raw
+  cloning is a dead end** — objects carry instance/group state the game's own
+  spawn sets up and the draw depends on.
+
+**The sound path — proper spawn via `func_80027464`** (`26CE0.c:328`):
+`s32 func_80027464(s32 count, ObjSpawnInfo* info, f32 x, f32 y, f32 z, f32 rotY)`
+— `count` = number of objects to spawn (multi-part); scans `gObjects[14..77]`
+for `ACTION_NONE`, then per object: `func_8001A928` (init) → `func_8001BD44`
+(load model from `gFileArray[info->unk4].ptr`) → sets Pos/Rot, `actionState =
+ACTION_IDLE`, `objID = info->unk2`, and wires the `unk10E` group links. Returns
+the first slot. `struct ObjSpawnInfo` (`types.h:830`): `unk0` s8, `unk2` s16 =
+objID, `unk4` s16 = **file index (the model)**, `unk6` s8, `unk7..A`.
+- **The blocker:** the model only renders if `gFileArray[info->unk4].ptr` is a
+  loaded file. The static campaign `ObjSpawnInfo`s (`D_8011xxxx`, `variables.h`)
+  point at files NOT loaded in the Battle Room. Need an `ObjSpawnInfo` whose
+  model file is resident.
+- **Next lead:** trace how the Battle Room's own level loader spawns its door /
+  plate (`gLevelInfo[MAP_BATTLE_ROOM]->unk24()/unk28()`, invoked from
+  `func_80081D78`) — that IS a working proper-spawn with a resident model. Reuse
+  that exact spawn info / path, then position the object from the sim.
+  Alternative: the player-bomb spawn (resident model, proper init) as a
+  placeholder, if its fuse/explosion can be suppressed.
+
+**Positioning (works, once actors exist):** anchor each actor to the live
+`gPlayerObject` — `obj.Pos = gPlayerObject->Pos + (sim_pos_i − sim_pos_0)·scale`
+— via native getters `arena_get_bomber_off_x/z(i)`, `arena_get_bomber_yaw(i)`
+(already built, `arena_bridge.cpp`). Caveat seen in testing: this makes actors
+*mirror* the player's movement, because `gPlayerObject` also moves under the
+game's own player physics (not just our sim delta); a **fixed captured origin**
+(spawn-frame `gPlayerObject->Pos` + fixed sim corner offsets) avoids the mirror.
+
+**Draw vs update are separately gated** (`boot/17930.c`): `gDebugRoutine1()`
+(draw, line 1562, gate `D_8016E0A8`) and `gDebugRoutine2()` (update, line 1797,
+gate `D_8016E0B0`) — draw can fire before/without the update, so any per-frame
+setup an actor's draw depends on must not assume the update ran first.
+
+**Neutral-input bug (fixed A1.2b):** a raw `ArenaInput` of `0` is NOT neutral —
+`arena_input_pack` encodes the stick offset-by-32, so raw 0 decodes to a full
+`(−32,−32)` stick. Idle players fed raw 0 run into the walls. Use
+`arena_input_pack(0,0,0,0,0)` for neutral. Latent since A1.2a (only player 0
+drawn); surfaced the moment players 1–3 are rendered.

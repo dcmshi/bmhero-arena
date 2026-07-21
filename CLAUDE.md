@@ -12,6 +12,31 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
   player struct, input, camera, coord mapping) — read before any A1.2+ work
 - `README.md` — this repo's layout, build, and the five invariants
 
+## Current status (2026-07-21)
+
+**A1.2b partial / multi-actor BLOCKED (2026-07-21).** Goal was spawn+puppet the
+other 3 bombers. Outcome: the single player-0 puppet (A1.2a) stays the shipped
+state; adding 3 more actors is a **substantial RE sub-project**, not a small
+add, and is deferred. What shipped this pass (fork branch
+`feature/a1.2b-spawn-bombers`, commit `89208b1`):
+- **Bugfix:** idle players 1–3 were fed a raw-`0` `ArenaInput`, which decodes to
+  a full `(−32,−32)` stick (neutral is `arena_input_pack(0,…)` = `0x820`), so
+  they ran into walls. Fixed in `arena_bridge.cpp`. Latent since A1.2a (only
+  player 0 was drawn); changes the non-battle proof-of-life hash, **not** the
+  pinned CI sim hash.
+- **Scaffolding:** per-index offset getters `arena_get_bomber_off_x/z/yaw` +
+  capture/clone exports, ready for the eventual bridge.
+- **Mapped the wall** (full detail in integration notes §8): player object can't
+  be duplicated (single-player update logic); raw-cloning a resident door/plate
+  renders but crashes (copied `unk10E` spawn-group links are needed to draw yet
+  invalid for a duplicate — catch-22); proper spawn `func_80027464` needs an
+  `ObjSpawnInfo` whose model file is resident (only player/door/plate are).
+- **New gotcha:** static patches must be **stateless** (patch-local mutable
+  statics abort with `0xC0000409`) — keep state native. Crash-dump forensics via
+  `cdb` documented in integration notes §1.
+- **Next lead:** trace the Battle Room level loader's own door/plate spawn to
+  recover a resident-model `ObjSpawnInfo`, then proper-spawn + position from sim.
+
 ## Current status (2026-07-18)
 
 **A0 complete.** Headless deterministic arena sim in `src/arena/`, all tests
