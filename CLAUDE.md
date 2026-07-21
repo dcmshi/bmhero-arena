@@ -7,6 +7,9 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
   determinism model, netcode topology, milestones (arena-first, A0 done)
 - `docs/bmhero-battle-arena-design.md` — the mode being built now: ruleset,
   ArenaState spec, tick pipeline, GekkoNet plan, render bridge, host-session model
+- `docs/bmhero-recomp-integration-notes.md` — **living RE reference for the
+  fork-side render bridge** (patch/export mechanism, per-frame hooks, object &
+  player struct, input, camera, coord mapping) — read before any A1.2+ work
 - `README.md` — this repo's layout, build, and the five invariants
 
 ## Current status (2026-07-18)
