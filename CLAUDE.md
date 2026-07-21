@@ -18,6 +18,25 @@ rollback stress, snapshot round-trip, liveness. Scripted-match hash pinned at
 `TUNE_VERSION` 2, first intentional gameplay change; previously `a55aa9b1`)
 — CI matrix on GitHub: https://github.com/dcmshi/bmhero-arena.
 
+**A1.2a complete (2026-07-20).** First render bridge on screen: in the Battle
+Room the campaign player object (`gPlayerObject`) is puppeted from our
+fixed-point sim, drawn by Hero. A `RECOMP_PATCH` on the 6-line level-enter
+`func_800824A8` routes the per-frame `gDebugRoutine2` through
+`arena_render_routine`, which reads the controller, ticks the sim via native
+`arena_export_tick_input`, and moves the player **by the sim's per-frame
+displacement** (dx/dz added to live Pos; **Y left to the game** so it stays
+grounded and the camera follows — no teleport, no fragile spawn-capture).
+Native coord exports in `arena_bridge` (syms.ld `0x8F000128+`); VI-callback
+tick gated off in battle so the patch drives the tick. Verified: bomberman
+moves under our physics on screen. **Known item:** forward/back reads
+"compressed" (camera foreshortening); the right fix is camera-relative input
+using the real `gView` transform — deferred to the feel pass (blind
+scale-tuning went the wrong way, so measure, don't guess). Fork branch
+`feature/a1.2a-puppet-player`. Build gotcha: after editing any `patches/*.c`,
+`make clean` in `patches/` before the cmake build (ninja doesn't reliably
+re-run the patch make — stale patch = mismatch crash). Next: A1.2b spawn +
+puppet all 4 bombers.
+
 **A1.1b-ii complete (2026-07-20).** Battle launch warps into `MAP_BATTLE_ROOM`
 (Hero's own dedicated arena — loads cleanly on direct entry, no fallback
 needed) instead of the campaign level. Mechanism: `arena_bridge_is_battle`
@@ -139,10 +158,10 @@ changes, that must be an intentional gameplay change.
    entry + battle-mode flag); A1.1b-ii done (Battle warps into
    MAP_BATTLE_ROOM); A1.1c dropped (room already clean; frontend-skip deferred
    as fragile/low-ROI).* Remaining:
-   **A1.2 render bridge** — A1.2a puppet `gObjects[0]` from `ArenaState`
-   (in progress) → A1.2b spawn+puppet 4 bombers → A1.2c bombs/blasts →
-   anim/HUD/camera. Render writes into `gObjects` entries from `ArenaState`
-   (mapping Q20.12 → Hero float coords).
+   **A1.2 render bridge** — A1.2a done (player puppeted from sim, on screen) →
+   A1.2b spawn+puppet 4 bombers → A1.2c bombs/blasts → anim + **camera-relative
+   input** (fix forward/back feel via `gView`) + HUD. Render writes into
+   `gObjects` entries from `ArenaState` (Q20.12 → Hero coords).
    **Side task — arena-shell eval:** try a Nitros boss room as a bigger arena
    (verify direct-warp loads clean, suppress the boss, swap `ARENA_WARP_MAP`;
    currently `MAP_BATTLE_ROOM`).
