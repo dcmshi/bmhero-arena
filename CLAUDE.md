@@ -14,6 +14,35 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
 
 ## Current status (2026-07-22)
 
+**A1.2e closed + A1.2f harness shipped — input direction is native-correct;
+the load-crash class is fixed at its mechanism; boots are machine-verified
+(2026-07-22 evening).** The headline discovery (§8.11): **the game already
+rotates the stick by camera yaw natively** (`func_80024744`, camtype set
+{1,2,5,6,7,8}; the arena is type 6) — our added gView rotation was
+double-rotating (forward speed cut ~⅓); the raw pass-through IS the correct
+camera-relative mapping. Facing: `Rot.y = 180 − sim_yaw`, derived from the
+game's movement equations (§8.11). Set/Q was NEVER broken — user presses
+reached the sim (`live=1..3`); ground bombs rendered BELOW the floor
+(bomb/blast `wy` now floor-clamped). The stochastic crash class is finally
+dead at the mechanism (§8.12): the runtime's func_map races indirect calls
+during level transitions — the draw dispatcher now DIRECT-dispatches our
+hook (`required_patches.c` `func_8001D9E4` patch); gating around the window
+provably cannot work (level-enter pump runs 30–90+ routine frames; 0/10 →
+10/10 soak on the fix). **A1.2f boot-soak harness** (`tools/arena-soak.ps1`
++ `ARENA_AUTO_BATTLE` env: auto-battle from the launcher update callback,
+synthetic frontend mash, probe mode with in-level stick/button injection) —
+~50 machine boots today; **rule: no build reaches the human without a green
+soak on that exact build.** Probe collateral: the arena has a live
+level-exit trigger (N) and damage tiles (corners) → hardening slice
+(A1.2g). **User-confirmed:** movement direction correct. **Open punch list
+(next slices):** A1.3 dynamics = speed/accel/turn/momentum from the decomp
+(`Math_CalcAngleRotated`, `2BF00.c:480` player physics — THE feel gap);
+set/kick player ANIMATIONS + feedback (puppet performs none of the game's
+player anims); facing exactness polish; on-screen set-bomb visibility
+confirm (machine-verified rendered; user still reports invisible —
+re-verify after anims); arena hazards (A1.2g). Fork branch
+`feature/a1.2e-camera-input` (pushed).
+
 **A1.2d closed — bomber mesh deferred (anims not resident in the arena);
 load-crash class fully dead (2026-07-22).** The real-bomber slice ended at its
 decision gate with a complete RE map (§8.5b rewritten): the bomber MESH is
@@ -271,8 +300,12 @@ changes, that must be an intentional gameplay change.
    (bombs render + set/kick wired; blasts render as pops — real explosion
    visual deferred, needs effect-asset RE, §8.9); A1.2d closed (bomber mesh
    deferred — anims not arena-resident; next attempt starts at the
-   player-path anim-bind trace, §8.5b) → anim + **camera-relative input**
-   (fix forward/back feel via `gView`) + HUD. Render writes into `gObjects`
+   player-path anim-bind trace, §8.5b); A1.2e closed (input direction =
+   native-correct raw pass-through, §8.11; func_map crash class fixed,
+   §8.12); A1.2f done (boot-soak harness) → **A1.3 dynamics/feel** (decomp
+   transcription: `Math_CalcAngleRotated`, speed/accel/turn — the remaining
+   feel gap) + player anims (set/kick feedback) + **A1.2g arena hardening**
+   (exit trigger, damage tiles) + HUD. Render writes into `gObjects`
    entries from `ArenaState` (Q20.12 → Hero coords).
    **Side task — arena-shell eval: DONE.** Warped to a Nitros boss room
    (`MAP_NITROS_1`) as the flat arena — direct-warp loads clean, boss suppressed

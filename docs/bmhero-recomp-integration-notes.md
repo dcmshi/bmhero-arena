@@ -425,3 +425,64 @@ player 0 (on-screen since A1.2a).
 - **Neutral-input bug (fixed A1.2b):** raw `ArenaInput` `0` is NOT neutral —
   `arena_input_pack` offsets the stick by 32, so raw 0 = a full `(−32,−32)`
   stick. Use `arena_input_pack(0,0,0,0,0)` for idle players.
+
+### 8.11 Input & camera truth (A1.2e, 2026-07-22)
+
+- **The game itself makes the stick camera-relative.** `func_80024744`
+  (`boot/21E10.c:826`) — the routine our render wrapper calls — rotates
+  `gActiveContStickX/Y` IN PLACE by `gView.rot.y` (guRotateF y-axis →
+  guMtxXFMF) for `gCameraType ∈ {1,2,5,6,7,8}`. The Nitros arena is **type 6**
+  (probe: raw (0,80) → (43.5,68.0) = exactly rot.y 34°). The raw pass-through
+  read AFTER that call is therefore already camera-relative; adding a
+  gView-based rotation on top DOUBLE-rotates (measured: forward speed cut to
+  ~⅓ — the "slow up/down" symptom). **If the arena map ever changes, log
+  `gCameraType` first** — outside that set the stick arrives unrotated (the
+  likely truth behind A1.2a's Battle-Room-era "compressed" note).
+- `struct View` (`types.h:257`): **`.at` @0x00 BEFORE `.eye` @0x0C** (then
+  rot/up/dist). `rot.y` = the canonical camera yaw in degrees; the arena rail
+  camera swings 25–89° across the room and CUTS (eye teleports ~1800u).
+- **Facing:** game moves along `(+sin θ, +cos θ)` (`2BF00.c:480`, moveAngle°),
+  the sim along `(+sin yaw, −cos yaw)` → `Rot.y = 180 − sim_yaw` (derived, not
+  tuned). `moveAngle = Math_CalcAngleRotated(stickX, −stickY)` (`2BF00.c:488`)
+  — the anchor for A1.3's dynamics transcription (speed curve, accel, turn).
+- **Ground bombs rendered below the floor**: bomb/blast `wy` is now clamped to
+  `origin_y` (native bridge) — set bombs were sim-live (`live=1..3` on the
+  user's Q presses) yet invisible; thrown bombs arc above the floor and always
+  showed.
+- `sqrtf` is usable in patches (lowers to MIPS sqrt.s under -ffast-math) but
+  ALWAYS verify no `U sqrtf` remains: `"...VC\Tools\Llvm\x64\bin\llvm-nm.exe"
+  patches\arena_render.o | findstr sqrt` must be empty (the portable LLVM15
+  lacks llvm-nm; an emitted libcall links silently and jumps to 0).
+
+### 8.12 The func_map race, its fix, and the boot-soak harness (A1.2e/f, 2026-07-22)
+
+- **Crash class root cause:** the runtime's function map mutates during
+  overlay load/unload while the game thread makes indirect calls (`jalr` →
+  `get_function`); a lookup losing the race exits ("Failed to find function"
+  → `exit(1)` → `0xC0000409`). Confirmed callers: three load-window
+  `recomp_printf` sites (disabled) and the **draw dispatcher's
+  `gDebugRoutine1()`** (8 symbolized dumps).
+- **The fix that works:** direct-dispatch in `required_patches.c`'s existing
+  `func_8001D9E4` patch — `if (gDebugRoutine1 == &func_800821E0)
+  func_800821E0();` (host-linked, no lookup) else stock indirect. **Gating
+  around the window CANNOT work:** the level-enter pump (`func_800824A8` →
+  `func_80000964`) runs 30–90+ routine frames synchronously, so counter/NULL
+  gates reopen in-pump — reset-gating made the crash DETERMINISTIC (0/10
+  soak); direct dispatch took the same flow to 10/10.
+- **Boot-soak harness (`tools/arena-soak.ps1` + `ARENA_AUTO_BATTLE` env):**
+  `1` = auto-battle + synthetic START/A frontend mash (injected at the
+  input-callback level in `main.cpp` — no window focus needed), `2` = auto
+  only, `3` = probe (post-entry stick/button injection for movement/set
+  checks). PASS = `[capture]` in a fresh `arena_bridge.log` (the game rewrites
+  it per process). The mash stops on the `arena_routine_seen` latch (first
+  `tick_input` call) — stopping any later risks an in-level START/pause
+  livelock (seen on screen). Auto-battle must fire from the launcher UPDATE
+  callback (~frame 60), not init (dies ~11s, dumpless).
+- **Probe collateral (un-neutralized arena hazards, own slice):** the boss
+  room has a live **level-exit trigger** (north — walking in transitions
+  levels) and **damage tiles** (corners); both exercise reload/death paths
+  that the bypassed arena has never been hardened for.
+- **Process rule (user-set):** never hand a build to the human without a
+  green soak ON THAT EXACT BUILD (`-N 10`, exit 0). Human boots are for feel,
+  facing, and animation judgments only — everything else goes through the
+  harness first.
