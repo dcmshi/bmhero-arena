@@ -273,11 +273,18 @@ load + skeletal binds + pick a neutral idle pose. Its own focused RE task.
   at the source's slot group). Cloning the player object → crash (single-player
   update logic). A *fresh* `func_80027464` spawn avoids both.
 
-### 8.8 Tooling (this session)
+### 8.8 Tooling (verification loop)
 
-- **Screenshots regardless of focus/occlusion:** `PrintWindow(hwnd, hdc, 2)`
-  (`PW_RENDERFULLCONTENT`) captures the RT64/Vulkan window even when it's behind
-  other windows — unlike `CopyFromScreen`. Read the PNG directly.
+- **Screenshots regardless of focus/occlusion:** fork `tools/capture-game.ps1`
+  (`PrintWindow(hwnd, hdc, 2)` / `PW_RENDERFULLCONTENT`) captures the
+  RT64/Vulkan window to `game.png` even when it's behind other windows —
+  unlike `CopyFromScreen`. Read the PNG directly.
+- **Symbolized crash dumps:** launch via fork `playrwdi.bat` (the
+  `build-rwdi` RelWithDebInfo exe + PDB); analyze the newest
+  `%LOCALAPPDATA%\CrashDumps\*.dmp` with `cdb -z <dmp> -y "srv*C:\sym*https://
+  msdl.microsoft.com/download/symbols;<fork>\build-rwdi" -c ".ecxr; kc 20; q"`
+  — frames name real recomp'd game functions. This is what cracked the load
+  crash (§8.9).
 - **In-patch marker logging:** `arena_dbg_u32(tag, val)` → `arena_bridge.log`
   (flushed each call, survives a subsequent crash). No markers logging at all ⇒
   crash at/before that point or during load (see §8.2 data-symbol trap).
