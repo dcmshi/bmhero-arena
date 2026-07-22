@@ -14,6 +14,26 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
 
 ## Current status (2026-07-21)
 
+**A1.2c slice 1 complete — bombs render + set/kick wired (2026-07-21).** The
+sim's live bombs are drawn in the arena: a pool of 6 bomb actors
+(`=TUNE_MAX_LIVE_BOMBS`) spawned once (proven `func_80027464` + `func_8001ABF4`
+recipe), toggled active/hidden each frame from `bombs[].state`, positioned from
+the sim **including Y** (throw arc shows; new `g_ref_sy` capture). Verified: a
+throw + the 4-bomb spread appear and arc on screen. Input now folds
+jump|bomb|set into a packed `buttons` arg (the export ABI caps at 4 args) and
+wires **set/kick = `CONT_G`** (Z / Q key); set is log-confirmed (Q → live-bomb
+count 0→4) — set bombs spawn at the player's feet so they're visually subtle.
+The boss-suppression sweep now spares all actor slots via `arena_is_actor_slot`.
+Fork branch `feature/a1.2b-spawn-bombers`.
+- **Pool ceiling (finding):** 6 bomb actors stable, **8+ crash at spawn** — the
+  suppressed Nitros boss holds model/anim-pool slots that `actionState=NONE`
+  doesn't free, leaving little headroom. Raising the sim bomb-cap (A1.3) needs
+  the boss's slots actually freed first (integration notes §8).
+- **Deferred to A1.2c slice 2 — blasts/explosions:** detonation currently = the
+  bomb vanishes (no explosion effect). The visual payoff (explosion, fuse blink,
+  event feedback) is the next slice; candidates `gFileArray[0xA/0xB/0xC]`,
+  `blasts[]` growth via `radius_t`/`ttl`.
+
 **A1.2b complete — 4 actors on screen with bomb placeholders (2026-07-21).**
 The full simulated roster is puppeted in the arena: player 0 (the campaign
 object, A1.2a) + **3 extra actors spawned into `gObjects[14..77]`** via the
@@ -202,8 +222,9 @@ changes, that must be an intentional gameplay change.
    MAP_BATTLE_ROOM); A1.1c dropped (room already clean; frontend-skip deferred
    as fragile/low-ROI).* Remaining:
    **A1.2 render bridge** — A1.2a done (player puppeted from sim); A1.2b done
-   (spawn+puppet all 4 — bomb placeholders, clean flat arena) → *real bomber
-   mesh (skeletal, §8.5b)* → A1.2c bombs/blasts → anim + **camera-relative
+   (spawn+puppet all 4 — bomb placeholders, clean flat arena); A1.2c slice 1
+   done (bombs render + set/kick wired) → *A1.2c slice 2 bombs' blasts/
+   explosions* → *real bomber mesh (skeletal, §8.5b)* → anim + **camera-relative
    input** (fix forward/back feel via `gView`) + HUD. Render writes into
    `gObjects` entries from `ArenaState` (Q20.12 → Hero coords).
    **Side task — arena-shell eval: DONE.** Warped to a Nitros boss room
