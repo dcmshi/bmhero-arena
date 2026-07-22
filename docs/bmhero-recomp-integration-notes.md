@@ -249,6 +249,41 @@ offsets from `D_80134794` @ `0x80134794`), and needs per-part skeletal anim
 binds, not one texture-anim config. Real bombers = replicate that multi-part
 load + skeletal binds + pick a neutral idle pose. Its own focused RE task.
 
+#### 8.5b-1 A1.2d findings — Task 1: topology (2026-07-22)
+
+- **The bomber is ONE object, ONE part — NOT a multi-part load.** The reading
+  of `4DFF0.c:424` above was a misread: that loop loads up to 8 *demo actors*
+  (one object each, one model each, data at per-actor offsets in file 1), not
+  8 bomber parts. `D_80134794` is the demo-scene descriptor — irrelevant here.
+- `func_8001BD44(objId, part, cfg, src)` (`boot/17930.c:1144`): `part` indexes
+  `gObjects[objId].Unk140[part]` (8 entries); **idempotent** (returns if the
+  part slot is occupied); each load allocates one `D_80165290` model-pool slot;
+  `modelTag = func_80010408(src, cfg)`.
+- **The generic-pool draw only visits parts 0 and 3** (`func_8001C464` /
+  `func_8001C5B8`, slots 14..77; pool [78..141] draws parts 0,1,3 via
+  `func_8001C70C`/`func_8001C96C`). Multi-part-per-object wouldn't draw there
+  anyway — single-part is the only viable generic-pool shape.
+- **The canonical single-object load recipe** — debug model viewer
+  `func_8002D538` (`boot/2BF00.c:552`, table-driven from `gObjInfo`); the menu
+  bomber `func_802814CC` (`overlays/13AC20/13AC20.c:421`) uses it verbatim on
+  file 1:
+  1. `func_8001BD44(slot, 0, 0x13, gFileArray[1].ptr)` — whole file, cfg 0x13;
+  2. `func_8001C0EC(slot, 0, animIdx, 1, animTable)` → `func_8001BE6C(slot, 0,
+     animIdx, &file1[animTable[animIdx]])` — instantiates the **model-anim**
+     (`D_80165290[part].unk20 = func_8001191C(modelTag, …)` + streams the anim
+     data from the file offset) — **the piece the A1.2b white-screen attempt
+     was missing** (we only bound `Unk148` texture anims via `func_8001ABF4`);
+  3. optional `func_8001ABF4` texture-anim bind (the menu bomber skips it).
+  Bomber anim-offset table = `D_80115F34` @ `0x80115F34` (0x8011xxxx resident
+  data, same region as the bomb's `D_801163DC`); the menu bomber uses index 0
+  as a standing display (`Rot.y = 180`, objID 3, actionState 0x12D).
+- Approach-B verdict: `func_8002D538` is the wrapping function but hardcodes
+  slot 0 / `gPlayerObject` — not separable; its 3-call core above IS the
+  recipe.
+- `func_8001A958(slot)` precedes the debug-viewer load (model-state reset for
+  reloading onto an occupied slot); a fresh `func_80027464` spawn starts with
+  `Unk140[] = -1`, so the spike skips it (fallback knob if loads misbehave).
+
 ### 8.6 The two object pools (don't cross them)
 
 - `gObjects[2..5]` = the **bomb pool** (`Get_InactiveObject`, `69AA0.c:434`);
