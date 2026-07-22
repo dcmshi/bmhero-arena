@@ -284,6 +284,32 @@ load + skeletal binds + pick a neutral idle pose. Its own focused RE task.
   reloading onto an occupied slot); a fresh `func_80027464` spawn starts with
   `Unk140[] = -1`, so the spike skips it (fallback knob if loads misbehave).
 
+#### 8.5b-2 A1.2d findings — Task 2: binds, idle pose, facing (2026-07-22)
+
+- `func_8001ABF4(objId, channel, mode, cfg)` (`boot/17930.c:943`): binds a
+  **texture-anim** config into `gObjects[objId].Unk148[channel]` (4 channels,
+  `D_8016C298` pool; frees any prior binding on that channel);
+  `func_8001AD6C(objId)` advances the frames. The demo's varying second arg
+  (`4DFF0.c:165-205`) = channel index. A1.2b's bomb bind `(slot, 0, 0, cfg)`
+  = channel 0, mode 0 — same shape works for the bomber.
+- The generic draw's per-part setup (`func_8001B014(slot, part)`) reads the
+  `Unk148` state — the suspected reason the A1.2b bomb draw aborted until an
+  `Unk148[0]` bind existed. The spike therefore binds channel 0 with the
+  bomber face config `D_80101E8C[0]` @ `0x80101E8C` (demo bomber face anim;
+  resident data). Fallbacks: `D_80101E8C[1..4]`, or the bomb's `D_801163DC`
+  (distinguishes channel-0-presence vs. config-content as the requirement).
+- **Idle pose = model-anim index 0** (`D_80115F34[0]` — the menu bomber's
+  standing display). Fallbacks: indices 1..3 (table size unknown; try in
+  order). Anim frames advance via `func_8001CD20` (= `func_8001CAAC(obj,
+  2.0f)`, parts 0..3, `boot/17930.c:1329`) — already runs for active
+  generic-pool objects; nothing extra to call per frame.
+- **Facing needs NO new code:** `arena_puppet_yaw(i)` returns degrees
+  (`yaw * 360/65536`) and the patch already writes it to
+  `gObjects[slot].Rot.y` every frame (`arena_render.c:204`), after
+  `func_80024744()` so it wins over any game write — same convention as
+  player 0 (on-screen since A1.2a). A1.2d only verifies it visually (it was
+  invisible on the rotationally-symmetric bomb mesh).
+
 ### 8.6 The two object pools (don't cross them)
 
 - `gObjects[2..5]` = the **bomb pool** (`Get_InactiveObject`, `69AA0.c:434`);
