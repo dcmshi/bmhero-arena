@@ -14,28 +14,37 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
 
 ## Current status (2026-07-21)
 
-**A1.2b partial / multi-actor BLOCKED (2026-07-21).** Goal was spawn+puppet the
-other 3 bombers. Outcome: the single player-0 puppet (A1.2a) stays the shipped
-state; adding 3 more actors is a **substantial RE sub-project**, not a small
-add, and is deferred. What shipped this pass (fork branch
-`feature/a1.2b-spawn-bombers`, commit `89208b1`):
-- **Bugfix:** idle players 1–3 were fed a raw-`0` `ArenaInput`, which decodes to
-  a full `(−32,−32)` stick (neutral is `arena_input_pack(0,…)` = `0x820`), so
-  they ran into walls. Fixed in `arena_bridge.cpp`. Latent since A1.2a (only
-  player 0 was drawn); changes the non-battle proof-of-life hash, **not** the
-  pinned CI sim hash.
-- **Scaffolding:** per-index offset getters `arena_get_bomber_off_x/z/yaw` +
-  capture/clone exports, ready for the eventual bridge.
-- **Mapped the wall** (full detail in integration notes §8): player object can't
-  be duplicated (single-player update logic); raw-cloning a resident door/plate
-  renders but crashes (copied `unk10E` spawn-group links are needed to draw yet
-  invalid for a duplicate — catch-22); proper spawn `func_80027464` needs an
-  `ObjSpawnInfo` whose model file is resident (only player/door/plate are).
-- **New gotcha:** static patches must be **stateless** (patch-local mutable
-  statics abort with `0xC0000409`) — keep state native. Crash-dump forensics via
-  `cdb` documented in integration notes §1.
-- **Next lead:** trace the Battle Room level loader's own door/plate spawn to
-  recover a resident-model `ObjSpawnInfo`, then proper-spawn + position from sim.
+**A1.2b in progress — draw path SOLVED, positioning open (2026-07-21).** The
+"animated models can't draw via the general spawn" wall is **broken**: an
+animated model (a bomb) now spawns into `gObjects[14..77]` via `func_80027464`
+and **draws on screen without crashing** — confirmed visually (bomb beside the
+player, stable). Full RE detail in **integration notes §8** (rewritten). Fork
+branch `feature/a1.2b-spawn-bombers` (`wip` checkpoint commit).
+- **The unlock:** `func_80027464` loads model parts (`Unk140`) but not the
+  animation instance an animated model needs; adding **`func_8001ABF4(slot,0,0,
+  cfg)`** binds it (`Unk148`/`D_8016C298` pool) and the draw stops aborting.
+- **Two hard patch gotchas found:** (1) auto-named DATA symbols (`D_801163DC`)
+  don't resolve via the patch reloc path and silently corrupt the whole patch →
+  pass their **address as a literal** `((T*)0x801163DC)`; (2) the export ABI
+  can't take float ARGS → pass floats as **`u32` bit patterns** through int args
+  (union bitcast). Both cost hours; §8.2.
+- **Also:** objID drives per-frame `behaviour()` **and collision** on `[14..77]`
+  (`func_8002B154`); `OBJ_RPLATE` teleports the player, the room's door closes on
+  entry. Mesh is separable from objID (`func_8001BD44`; bomber=`gFileArray[1]`,
+  bomb=`gFileArray[9]`, both resident). Inert objID still TBD.
+- **OPEN:** spawning 3 actors *parked* is stable, but *positioning* them to the
+  sim's corners crashes (wandering crash point) — traced to the Battle Room's
+  **pits + entry door**: actors land off-platform where per-object collision
+  aborts. **Next: warp to a flat/open arena** (`ARENA_WARP_MAP` in
+  `patches/arena_warp.c`; candidates §8.5) instead of `MAP_BATTLE_ROOM`.
+- **Tooling:** `PrintWindow` screenshots (occlusion-proof), `arena_dbg_u32` →
+  `arena_bridge.log` markers; hands-off keyboard input to the game is unreliable
+  (SDL focus) — human does the ~15s room nav, agent builds + verifies (§8.8).
+- **Bugfix (earlier pass):** idle players 1–3 were fed raw-`0` `ArenaInput`
+  (decodes to `(−32,−32)`); neutral is `arena_input_pack(0,…)`=`0x820`. Fixed in
+  `arena_bridge.cpp`; changes the non-battle proof-of-life hash, not the pinned
+  CI sim hash. Static patches must stay **stateless** (patch-local mutable
+  statics abort `0xC0000409`) — keep state native (`cdb` forensics, §1).
 
 ## Current status (2026-07-18)
 

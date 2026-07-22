@@ -147,69 +147,136 @@ Everything here is verified against the decomp at fork `master` as of 2026-07-20
   direct entry. A bigger boss arena (Nitros) is a candidate side task but revives
   boss/spawn suppression + warp verification.
 
-## 8. Object system & multi-actor rendering — A1.2b findings (BLOCKED)
+## 8. Object system & multi-actor rendering — A1.2b (draw path SOLVED; positioning open)
 
-Getting 3 MORE bombers on screen (A1.2b) is a **substantial RE sub-project**, not
-a small addition. A1.2a's single player-0 puppet works; every naive route to
-extra actors was tried and fails. Recorded so the next attempt starts warm.
+**Status (2026-07-21):** the "animated models can't draw via the general spawn"
+wall is **solved** — confirmed on screen: a bomb spawned beside the player
+renders and stays stable. The one remaining open item is multi-actor
+**positioning** (spreading actors to the sim's corners crashes), traced to the
+Battle Room's geometry. Fork checkpoint `feature/a1.2b-spawn-bombers` (`wip`
+commit). Supersedes the old "BLOCKED / no resident bomber model" analysis (that
+was a misdiagnosis — see §8.7).
 
-**Battle Room object table** (dumped live, `arena_dbg_dump` → `arena_bridge.log`):
-- slot 0 = the player (`objID 0`, `gPlayerObject`), slot 1 = arm/wind helper
-  (`gPlayerArmWindObject`), **slots 2–13 free** (`actionState == ACTION_NONE`),
-  slot 14 = a door (`OBJ_TOBIRA1_O` 77), slot 15 = a floor plate (`OBJ_RPLATE`
-  85). The **only resident bomber-shaped model is the player** (slot 0); no
-  other bomber models' assets are loaded.
+### 8.1 The working recipe (animated actor via general spawn)
 
-**Why the naive routes fail:**
-- **Clone the player object** into a free slot → its per-frame UPDATE is
-  single-player logic; running it on a 2nd `OBJ_PLAYER` aborts. Draw-only (flip
-  active just around the draw) → the draw needs update-computed render state, so
-  it feeds a bad display list to the RSP → graphics-worker access violation /
-  recomp fatal.
-- **Clone a simple resident object** (door/plate) with normal update → it
-  RENDERS at the sim position (proves the bridge!), but the raw `memcpy` copies
-  the object's **spawn-group cross-reference indices** (`unk10E[10]` @ 0x10E,
-  also `unkE6`/`Unk140`) which point at the source's slot group. The update/draw
-  follows them → bad-pointer crash. Those links are needed to draw yet invalid
-  for a duplicate; clearing `unk10E` to −1 (per `func_800272E8`, the unlink
-  routine, `26CE0.c:305`) makes it crash *earlier* (breaks the draw). **Raw
-  cloning is a dead end** — objects carry instance/group state the game's own
-  spawn sets up and the draw depends on.
+1. **Spawn** into `gObjects[14..77]` with the game's own proper spawn
+   `func_80027464(1, &info, x, y, z, rotY)` (`26CE0.c:328`): scans for
+   `ACTION_NONE`, then `func_8001A928` (init) → `func_8001BD44` (load model into
+   `Unk140`) → set Pos/Rot/`actionState=ACTION_IDLE`/`objID`, wire `unk10E`
+   group links correctly. Returns the slot. **Synthesize `ObjSpawnInfo`** on the
+   patch stack (`types.h:830`): `unk2`=objID (benign — see §8.4), `unk4`=file
+   index (`9`=bomb / `1`=bomber), `unk0`/`unk6`=`func_8001BD44` cfg args.
+2. **Bind the animation** — the missing piece. `func_80027464` loads model PARTS
+   (`Unk140`) but NOT the animation instance an animated model needs; the draw
+   then aborts (`0xC0000409`). Add **`func_8001ABF4(slot, 0, 0, cfg)`**
+   (`17930.c:943`) after the spawn: it allocates a slot in the `D_8016C298`
+   animation pool (256 slots, `func_8001AA60`), stores it in `Unk148[]`, and
+   `func_8001AD6C` advances it each frame. For the bomb, `cfg` = `D_801163DC`
+   (its anim config table). **This one call is what unblocks the draw.**
+3. **Position** each frame from the sim (§8.3) — but see the open item §8.5.
 
-**The sound path — proper spawn via `func_80027464`** (`26CE0.c:328`):
-`s32 func_80027464(s32 count, ObjSpawnInfo* info, f32 x, f32 y, f32 z, f32 rotY)`
-— `count` = number of objects to spawn (multi-part); scans `gObjects[14..77]`
-for `ACTION_NONE`, then per object: `func_8001A928` (init) → `func_8001BD44`
-(load model from `gFileArray[info->unk4].ptr`) → sets Pos/Rot, `actionState =
-ACTION_IDLE`, `objID = info->unk2`, and wires the `unk10E` group links. Returns
-the first slot. `struct ObjSpawnInfo` (`types.h:830`): `unk0` s8, `unk2` s16 =
-objID, `unk4` s16 = **file index (the model)**, `unk6` s8, `unk7..A`.
-- **The blocker:** the model only renders if `gFileArray[info->unk4].ptr` is a
-  loaded file. The static campaign `ObjSpawnInfo`s (`D_8011xxxx`, `variables.h`)
-  point at files NOT loaded in the Battle Room. Need an `ObjSpawnInfo` whose
-  model file is resident.
-- **Next lead:** trace how the Battle Room's own level loader spawns its door /
-  plate (`gLevelInfo[MAP_BATTLE_ROOM]->unk24()/unk28()`, invoked from
-  `func_80081D78`) — that IS a working proper-spawn with a resident model. Reuse
-  that exact spawn info / path, then position the object from the sim.
-  Alternative: the player-bomb spawn (resident model, proper init) as a
-  placeholder, if its fuse/explosion can be suppressed.
+### 8.2 Two hard patch gotchas (both cost hours here)
 
-**Positioning (works, once actors exist):** anchor each actor to the live
-`gPlayerObject` — `obj.Pos = gPlayerObject->Pos + (sim_pos_i − sim_pos_0)·scale`
-— via native getters `arena_get_bomber_off_x/z(i)`, `arena_get_bomber_yaw(i)`
-(already built, `arena_bridge.cpp`). Caveat seen in testing: this makes actors
-*mirror* the player's movement, because `gPlayerObject` also moves under the
-game's own player physics (not just our sim delta); a **fixed captured origin**
-(spawn-frame `gPlayerObject->Pos` + fixed sim corner offsets) avoids the mirror.
+- **Auto-named DATA symbols don't resolve in patches.** Game symbols resolve at
+  patch *load* via relocs (`--emit-relocs`, `--unresolved-symbols=ignore-all`;
+  nothing is in `patches.map`). FUNCTIONS (`func_*`) and NAMED globals
+  (`gObjects`, `gPlayerObject`) resolve fine, but an auto-named `D_xxxx` data
+  symbol (e.g. `D_801163DC`) does **not** — the unresolved reloc silently
+  corrupts the whole patch, crashing at LOAD (even the `RECOMP_PATCH`
+  `func_800824A8` breaks). **Symptom: zero in-level markers log at all.**
+  **Fix:** reference game data by *literal address* —
+  `#define D_801163DC_ADDR ((struct T*)0x801163DC)` — no reloc; the recomp
+  translates the address on deref inside the callee.
+- **The export ABI reads integer/pointer arg slots only.** `_arg<N,T>` reads
+  `(&ctx->r4)[N]` (GPRs). Float ARGS need special-case helpers
+  (`_arg_float_a1`/`_f14`) and are fragile. **Pass floats as `u32` bit patterns
+  through int args:** `union {f32 f; u32 u;}` in the patch → `(s32)u.u` → native
+  `union{u32 u; float f;}` reinterprets. Float RETURNS via `_return` work fine.
 
-**Draw vs update are separately gated** (`boot/17930.c`): `gDebugRoutine1()`
-(draw, line 1562, gate `D_8016E0A8`) and `gDebugRoutine2()` (update, line 1797,
-gate `D_8016E0B0`) — draw can fire before/without the update, so any per-frame
-setup an actor's draw depends on must not assume the update ran first.
+### 8.3 Positioning — frozen origin (no mirror)
 
-**Neutral-input bug (fixed A1.2b):** a raw `ArenaInput` of `0` is NOT neutral —
-`arena_input_pack` encodes the stick offset-by-32, so raw 0 decodes to a full
-`(−32,−32)` stick. Idle players fed raw 0 run into the walls. Use
-`arena_input_pack(0,0,0,0,0)` for neutral. Latent since A1.2a (only player 0
-drawn); surfaced the moment players 1–3 are rendered.
+`obj[i].Pos = origin + (sim_pos_i − sim_ref)·scale`, where `origin` =
+`gPlayerObject->Pos` **frozen at spawn** and `sim_ref` = sim player-0's pos
+frozen at spawn — NOT the live `gPlayerObject` (which also moves under the game's
+own player physics, so anchoring to it *mirrors* the player). State lives native
+(`arena_puppet_capture` via the u32-bitcast of §8.2; `arena_puppet_wx/wy/wz`
+getters). Yaw `deg = binang·360/65536`.
+
+### 8.4 objID drives behaviour AND collision — the map matters
+
+The per-frame update loop `func_8002B154` (`26CE0.c:1205`) runs, for each active
+`gObjects[14..77]`: `gObjInfo[objID].behaviour()` + `func_8001CEF4` +
+`func_8001CD20` (collision/physics) + `func_8001AD6C` (anim). Our patch runs
+*after* it (`func_80024744` first), so behaviour+collision only need to not
+CRASH, not be no-ops.
+- **Real objID behaviours have side-effects.** `OBJ_RPLATE` (85) **teleports the
+  player** when spawned on it; `OBJ_TOBIRA1_O` (77, the room's door) runs
+  "close on entry". A truly inert objID (behaviour == empty `func_8002B144`,
+  `26CE0.c:1199`) is still TBD — scan `gObjInfo` @ `0x80124D90` for it.
+- **Collision (`func_8001CD20`) runs regardless of objID.** An actor positioned
+  OFF the platform / over a pit likely aborts here — the leading theory for §8.5.
+
+### 8.5 OPEN — multi-actor positioning crashes; the map is the suspect
+
+- **Spawn 3 parked** (all beside the player, on-platform): **STABLE** (slots
+  26/27/28, anim bound, `simpos` advances, no crash).
+- **Position 3 to sim corners** (scale 120 → ±540 units spread): **CRASHES**,
+  and the crash point *wanders* run-to-run (sometimes before any frame-1 marker)
+  → memory/state corruption or a fatal object–world interaction (collision over
+  a pit; the door "close" behaviour on our door-objID actors).
+- **The Battle Room (`MAP_BATTLE_ROOM`=2) is a poor arena/test map:** a central
+  platform surrounded by **pits** (positioned actors fall off → collision
+  abort), and a **door that closes on entry** (which our door-objID actors run).
+- **Next: a flat/open arena.** Change `ARENA_WARP_MAP` in `patches/arena_warp.c`
+  (currently `2`). Candidates to try (verify direct-warp loads clean + player
+  spawns): other battle rooms `MAP_HYPER_ROOM`(3)/`HEAVY`(4)/`SKY`(5)/`SECRET`(6);
+  debug stages 113–125; debug rooms `MAP_DEBUG_ROOM_EVERY_ITEM`(126)/
+  `MAP_DEBUG_ROOM_AGAIN`(127). Alternative if staying on a pit-map: clamp actor
+  positions on-platform, and/or find an inert objID + suppress collision.
+
+### 8.6 The two object pools (don't cross them)
+
+- `gObjects[2..5]` = the **bomb pool** (`Get_InactiveObject`, `69AA0.c:434`);
+  drawn by a player/bomb-specific path. Do NOT spawn generic actors here.
+- `gObjects[14..77]` = the **generic pool** — `func_80027464` spawns here; drawn
+  by `func_8001C464`/`func_8001C5B8` (`17930.c:1236/1257`, follow `Unk140`);
+  updated by `func_8002B154`. This is where actors go.
+- **Mesh is separable from objID:** `func_8001BD44(slot, cfgA, cfgB,
+  gFileArray[idx].ptr)` loads any mesh into `Unk140`; objID only drives
+  behaviour + render params. Bomber mesh = `gFileArray[1]` (cfg `0,0x13`, per
+  `overlays/13AC20/13AC20.c:422`); bomb = `gFileArray[9]` (cfg `0,0`). Both are
+  low-index core assets **resident in every level** (that's why the player can
+  throw bombs anywhere) — confirmed live: `gFileArray[1]`=`0x8028b720`,
+  `[9]`=`0x802c7f30`, both non-null in the Battle Room.
+
+### 8.7 Superseded / historical (dead ends, don't retry)
+
+- **"No resident bomber model" was a MISDIAGNOSIS.** The bomber mesh
+  (`gFileArray[1]`) is resident; the real blockers were the animation-instance
+  binding (§8.1.2) and the data-symbol reloc (§8.2).
+- Raw `memcpy`-cloning door/plate → crash (copies `unk10E` group links pointing
+  at the source's slot group). Cloning the player object → crash (single-player
+  update logic). A *fresh* `func_80027464` spawn avoids both.
+
+### 8.8 Tooling (this session)
+
+- **Screenshots regardless of focus/occlusion:** `PrintWindow(hwnd, hdc, 2)`
+  (`PW_RENDERFULLCONTENT`) captures the RT64/Vulkan window even when it's behind
+  other windows — unlike `CopyFromScreen`. Read the PNG directly.
+- **In-patch marker logging:** `arena_dbg_u32(tag, val)` → `arena_bridge.log`
+  (flushed each call, survives a subsequent crash). No markers logging at all ⇒
+  crash at/before that point or during load (see §8.2 data-symbol trap).
+- **Hands-off keyboard input to the game is UNRELIABLE** — SDL only takes keys
+  when its window has focus, and a background script can't hold the foreground
+  from inside the agent session. Working loop: agent builds + verifies
+  (screenshot + log); a human does the ~15s launcher→room nav.
+
+### 8.9 Draw/update gating & the neutral-input bug (still true)
+
+- **Draw vs update are separately gated** (`boot/17930.c`): `gDebugRoutine1()`
+  (draw, line 1562) and `gDebugRoutine2()` (update, line 1797, our
+  `arena_render_routine`) — draw runs *before* update in a frame and can fire
+  without it, so an actor's draw must not assume its update already ran.
+- **Neutral-input bug (fixed A1.2b):** raw `ArenaInput` `0` is NOT neutral —
+  `arena_input_pack` offsets the stick by 32, so raw 0 = a full `(−32,−32)`
+  stick. Use `arena_input_pack(0,0,0,0,0)` for idle players.
