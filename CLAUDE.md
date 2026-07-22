@@ -14,6 +14,31 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
 
 ## Current status (2026-07-22)
 
+**A1.2d closed — bomber mesh deferred (anims not resident in the arena);
+load-crash class fully dead (2026-07-22).** The real-bomber slice ended at its
+decision gate with a complete RE map (§8.5b rewritten): the bomber MESH is
+resident everywhere (`gFileArray[1]` cfg `0x13`, spawner-loadable) but its
+ANIMATIONS are unreachable — the menu's `D_80115F34` stream table is garbage
+in-level (file 1 byte-identical across maps; `func_800122F0` parses a ~395k
+section count → endless `malloc_game` walk), the `gObjInfo` registry carries
+no bomber entries in any warpable arena (per-level population), and cfg
+`0x13`'s modelTag embeds no anims (`func_8001191C` AVs on the demo-style
+null-source bind). Unposed skeletal draw white-screens (A1.2b), so puppets
+stay bomb placeholders; a null-guarded gObjInfo candidate scan self-activates
+the recipe wherever entries appear. **Documented lead for the next attempt:
+player 0 animates in-arena ⇒ valid anim data IS resident via the player path —
+start by tracing `gPlayerObject`'s anim-instance bind.** Big wins shipped
+anyway: (1) the stochastic "black screen selecting battle" crash class is
+**fully dead** — it had THREE racing `recomp_printf` load-window sites
+(`required_patches.c` §8.9 + `3d_object_hook.c` + our `arena_warp.c`), all
+disabled, loads verified stable; (2) new `arena_spawn_gate` native export
+(spawn block deferred ~90 frames — the render routine's first invocations run
+inside level-enter where the game heap isn't serviceable); (3) hard-won patch
+rules recorded: null/non-KSEG0 derefs in patch code are host AVs;
+`MAP_MIRROR_ROOM` (71) is a direct-warp land mine (`func_8001D9E4`).
+Regression-verified: bombs/blasts/set/kick all still work. Sim untouched
+(pinned hash `4b6687d4`). Fork branch `feature/a1.2d-bomber-mesh` (pushed).
+
 **A1.2c complete — blasts render as pops; THE load crash fixed (2026-07-22).**
 Slice 2 shipped the fallback blast visual: 4 pooled blast actors (bomb mesh,
 proven recipe) appear at each live `blasts[]` center for the blast's 20-tick
@@ -244,10 +269,11 @@ changes, that must be an intentional gameplay change.
    **A1.2 render bridge** — A1.2a done (player puppeted from sim); A1.2b done
    (spawn+puppet all 4 — bomb placeholders, clean flat arena); A1.2c done
    (bombs render + set/kick wired; blasts render as pops — real explosion
-   visual deferred, needs effect-asset RE, §8.9) → *real bomber mesh
-   (skeletal, §8.5b)* → anim + **camera-relative input** (fix forward/back
-   feel via `gView`) + HUD. Render writes into `gObjects` entries from
-   `ArenaState` (Q20.12 → Hero coords).
+   visual deferred, needs effect-asset RE, §8.9); A1.2d closed (bomber mesh
+   deferred — anims not arena-resident; next attempt starts at the
+   player-path anim-bind trace, §8.5b) → anim + **camera-relative input**
+   (fix forward/back feel via `gView`) + HUD. Render writes into `gObjects`
+   entries from `ArenaState` (Q20.12 → Hero coords).
    **Side task — arena-shell eval: DONE.** Warped to a Nitros boss room
    (`MAP_NITROS_1`) as the flat arena — direct-warp loads clean, boss suppressed
    via the pre-update sweep; `ARENA_WARP_MAP`=15.

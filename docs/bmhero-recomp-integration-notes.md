@@ -236,79 +236,85 @@ CRASH, not be no-ops.
 - Confirmed on screen: player + 3 bomb actors at the sim corners, holding
   position as the player moves (no mirror), `simpos` advancing.
 
-### 8.5b FOLLOW-UP — real bomber mesh (skeletal model, deferred)
+### 8.5b Real bomber mesh — A1.2d verdict: mesh resident, ANIMS are not (2026-07-22)
 
-The actors are **bomb placeholders** (`gFileArray[9]` + `func_8001ABF4` bomb
-config — single-part, one clean anim bind). Swapping to the real **bomber mesh**
-(`gFileArray[1]`, `func_8001BD44` cfg `0x13`) + a bomber anim config
-(`D_80101E8C` @ `0x80101E8C`) **spawns fine but the draw white-screens** (RSP
-abort on a malformed model). The player-bomber is a **multi-part SKELETAL
-model** — `code/4DFF0.c` loads it in a LOOP (`func_8001BD44(i, 0,
-D_80134794->unk34[i], gFileArray[1].ptr + D_80134794->unk14[i])`, per-part
-offsets from `D_80134794` @ `0x80134794`), and needs per-part skeletal anim
-binds, not one texture-anim config. Real bombers = replicate that multi-part
-load + skeletal binds + pick a neutral idle pose. Its own focused RE task.
+**The slice closed at its decision gate.** The bomber MESH loads and the whole
+recipe is now understood, but its ANIMATION data is not reachable in the arena
+— and drawing the skeletal mesh without an anim instance white-screens (the
+A1.2b RSP abort). Puppets remain bomb placeholders. Everything below is
+evidence-backed (log tags + symbolized dumps, 2026-07-22).
 
-#### 8.5b-1 A1.2d findings — Task 1: topology (2026-07-22)
-
-- **The bomber is ONE object, ONE part — NOT a multi-part load.** The reading
-  of `4DFF0.c:424` above was a misread: that loop loads up to 8 *demo actors*
-  (one object each, one model each, data at per-actor offsets in file 1), not
-  8 bomber parts. `D_80134794` is the demo-scene descriptor — irrelevant here.
+**The corrected recipe (what a bomber needs):**
+- The bomber is **ONE object, ONE part** — NOT a multi-part load. (The old
+  "multi-part loop" reading of `4DFF0.c:424` was a misread: that loop loads up
+  to 8 *demo actors*; `D_80134794` is the demo-scene descriptor.)
 - `func_8001BD44(objId, part, cfg, src)` (`boot/17930.c:1144`): `part` indexes
-  `gObjects[objId].Unk140[part]` (8 entries); **idempotent** (returns if the
-  part slot is occupied); each load allocates one `D_80165290` model-pool slot;
-  `modelTag = func_80010408(src, cfg)`.
-- **The generic-pool draw only visits parts 0 and 3** (`func_8001C464` /
-  `func_8001C5B8`, slots 14..77; pool [78..141] draws parts 0,1,3 via
-  `func_8001C70C`/`func_8001C96C`). Multi-part-per-object wouldn't draw there
-  anyway — single-part is the only viable generic-pool shape.
-- **The canonical single-object load recipe** — debug model viewer
-  `func_8002D538` (`boot/2BF00.c:552`, table-driven from `gObjInfo`); the menu
-  bomber `func_802814CC` (`overlays/13AC20/13AC20.c:421`) uses it verbatim on
-  file 1:
-  1. `func_8001BD44(slot, 0, 0x13, gFileArray[1].ptr)` — whole file, cfg 0x13;
-  2. `func_8001C0EC(slot, 0, animIdx, 1, animTable)` → `func_8001BE6C(slot, 0,
-     animIdx, &file1[animTable[animIdx]])` — instantiates the **model-anim**
-     (`D_80165290[part].unk20 = func_8001191C(modelTag, …)` + streams the anim
-     data from the file offset) — **the piece the A1.2b white-screen attempt
-     was missing** (we only bound `Unk148` texture anims via `func_8001ABF4`);
-  3. optional `func_8001ABF4` texture-anim bind (the menu bomber skips it).
-  Bomber anim-offset table = `D_80115F34` @ `0x80115F34` (0x8011xxxx resident
-  data, same region as the bomb's `D_801163DC`); the menu bomber uses index 0
-  as a standing display (`Rot.y = 180`, objID 3, actionState 0x12D).
-- Approach-B verdict: `func_8002D538` is the wrapping function but hardcodes
-  slot 0 / `gPlayerObject` — not separable; its 3-call core above IS the
-  recipe.
-- `func_8001A958(slot)` precedes the debug-viewer load (model-state reset for
-  reloading onto an occupied slot); a fresh `func_80027464` spawn starts with
-  `Unk140[] = -1`, so the spike skips it (fallback knob if loads misbehave).
+  `gObjects[objId].Unk140[part]`; idempotent; each load takes one `D_80165290`
+  model-pool slot; `modelTag = func_80010408(src, cfg)`. Bomber mesh = whole
+  `gFileArray[1]`, cfg `0x13` (the spawner does this itself via
+  `ObjSpawnInfo.unk4=1/.unk6=0x13` — `func_80027464` → `26CE0.c:364`).
+- Generic pool [14..77] draws only `Unk140[0]` and `[3]`
+  (`func_8001C464`/`func_8001C5B8`); pool [78..141] draws 0,1,3.
+- The missing piece vs. the bomb recipe is the **model-anim instance**
+  (`D_80165290[modelSlot].unk20`, bound via `func_8001C0EC` → `func_8001BE6C`
+  → `func_8001191C`), plus the usual `Unk148` texanim (`func_8001ABF4(objId,
+  channel, mode, cfg)` — 4 channels, `D_8016C298` pool, advanced by
+  `func_8001AD6C`).
 
-#### 8.5b-2 A1.2d findings — Task 2: binds, idle pose, facing (2026-07-22)
+**All three anim-data sources fail in the arena (each disproven):**
+1. **Menu stream table `D_80115F34`** (the 13AC20.c menu/mirror bomber path):
+   points at garbage in-level. `gFileArray[1]` is **byte-identical** in
+   MAP_NITROS_1 and MAP_MIRROR_ROOM (base `0x8028b720`; hdr words at
+   +0x3BC8 = `0xBF000000`,`0x0006080A`); `func_800122F0` parses section
+   counts/alloc sizes straight from that data → a ~395k "count" → **endless
+   `malloc_game` walk** (the ~1.5s freeze; symbolized hang stack:
+   `malloc_game ← func_800122F0 ← func_8001BE6C ← func_8001C0EC`). The menus
+   evidently run against a different file-1 context.
+2. **`gObjInfo` registry** (`0x80124D90`; what the debug binder
+   `func_8002BE04`, `2BF00.c:227`, keys off `objID`): the bomber-ish entries
+   (392 `OBJ_MIR_BOMBER`, 614 `OBJ_EVBOMBER`, 621 `OBJ_EVS_BOM`, 6
+   `OBJ_BOMBER7`) have **NULL `unk38`/`animPtr` in every warpable arena** —
+   the registry is populated per-level with the level's roster.
+3. **Embedded model anims** (demo-style null-source bind
+   `func_8001BE6C(slot,0,0,0)`): cfg `0x13`'s modelTag has **no anim
+   directory** — `func_8001191C` AVs (symbolized dump).
 
-- `func_8001ABF4(objId, channel, mode, cfg)` (`boot/17930.c:943`): binds a
-  **texture-anim** config into `gObjects[objId].Unk148[channel]` (4 channels,
-  `D_8016C298` pool; frees any prior binding on that channel);
-  `func_8001AD6C(objId)` advances the frames. The demo's varying second arg
-  (`4DFF0.c:165-205`) = channel index. A1.2b's bomb bind `(slot, 0, 0, cfg)`
-  = channel 0, mode 0 — same shape works for the bomber.
-- The generic draw's per-part setup (`func_8001B014(slot, part)`) reads the
-  `Unk148` state — the suspected reason the A1.2b bomb draw aborted until an
-  `Unk148[0]` bind existed. The spike therefore binds channel 0 with the
-  bomber face config `D_80101E8C[0]` @ `0x80101E8C` (demo bomber face anim;
-  resident data). Fallbacks: `D_80101E8C[1..4]`, or the bomb's `D_801163DC`
-  (distinguishes channel-0-presence vs. config-content as the requirement).
-- **Idle pose = model-anim index 0** (`D_80115F34[0]` — the menu bomber's
-  standing display). Fallbacks: indices 1..3 (table size unknown; try in
-  order). Anim frames advance via `func_8001CD20` (= `func_8001CAAC(obj,
-  2.0f)`, parts 0..3, `boot/17930.c:1329`) — already runs for active
-  generic-pool objects; nothing extra to call per frame.
-- **Facing needs NO new code:** `arena_puppet_yaw(i)` returns degrees
-  (`yaw * 360/65536`) and the patch already writes it to
-  `gObjects[slot].Rot.y` every frame (`arena_render.c:204`), after
-  `func_80024744()` so it wins over any game write — same convention as
-  player 0 (on-screen since A1.2a). A1.2d only verifies it visually (it was
-  invisible on the rotationally-symmetric bomb mesh).
+**Future lead (start here next time):** player 0 **animates in the arena**, so
+valid bomber anim data IS resident via the dedicated player path. Trace who
+binds `gPlayerObject`'s anim instance
+(`D_80165290[gObjects[0].Unk140[0]].unk20`) at level load and reuse that
+source — or share/copy the live instance.
+
+**End state in the fork (`feature/a1.2d-bomber-mesh`):**
+- Puppets spawn as bombs; a **null-guarded gObjInfo candidate scan** runs at
+  spawn (log tags 50–53 spawn-info ptrs, 60–63 animPtrs, 43 pick) and will
+  self-activate the registry recipe in any level that carries a bomber entry.
+- **`arena_spawn_gate`** (native, `0x8F0001C0`): the one-shot spawn block waits
+  ~90 routine invocations — the routine's first calls run **inside level-enter**
+  (`func_800824A8` → `func_80000964` → routine), where `malloc_game` is not
+  serviceable.
+- Deref discipline: in recomp'd patch code a null/non-KSEG0 pointer deref is a
+  **host access violation** (`rdram + (addr − 0x80000000)`), not a harmless
+  garbage read — null-check game pointers (many `gObjInfo[].unk38` are NULL).
+
+**Map notes:** arena stays `MAP_NITROS_1` (15). `MAP_MIRROR_ROOM` (71) is a
+direct-warp land mine: unregistered function pointer in `func_8001D9E4` at
+level-enter (`get_function` → exit; symbolized dump). Battle Room (2) had the
+pit/collision aborts (§8.5).
+
+**Related stability fix (the slice's big win):** the "~⅓ of boots" stochastic
+load crash had **THREE `recomp_printf`-in-load-window sites**, all now
+disabled: `required_patches.c` `load_from_rom_to_addr` (§8.9),
+`3d_object_hook.c` `func_800608B8`, and our own `arena_warp.c`
+`func_80081C50`. Chain (all three identical): `_Printf` indirect call →
+`get_function` "Failed to find function" → `exit(1)` → atexit
+`thread_cleaner_thread` dtor → `0xC0000409`. **Never `recomp_printf` in the
+load window.** Loads verified stable since.
+
+**Facing (still true, visually unverified — bombs are symmetric):**
+`arena_puppet_yaw(i)` returns degrees (`yaw * 360/65536`), written to
+`gObjects[slot].Rot.y` each frame after `func_80024744()`; same convention as
+player 0 (on-screen since A1.2a).
 
 ### 8.6 The two object pools (don't cross them)
 
