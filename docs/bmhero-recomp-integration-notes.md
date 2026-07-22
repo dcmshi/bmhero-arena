@@ -355,6 +355,29 @@ player 0 (on-screen since A1.2a).
 - **In-patch marker logging:** `arena_dbg_u32(tag, val)` → `arena_bridge.log`
   (flushed each call, survives a subsequent crash). No markers logging at all ⇒
   crash at/before that point or during load (see §8.2 data-symbol trap).
+- **HANGS produce no crash dump — attach to the live process instead**
+  (A1.2d's decisive tool): `cdb -p <pid> -y "<symsrv>;<fork>\build-rwdi"
+  -c "~*kc 22; qd"` dumps every thread's stack with real function names and
+  detaches harmlessly. This named `malloc_game ← func_800122F0 ← …` in one
+  shot. Gotchas: a hang can look like a crash to the player (window closed);
+  check `Get-Process BMHeroRecompiled` FIRST — `Responding=True` just means
+  the window pump lives. Attach error 87 ⇒ a zombie cdb is still attached —
+  kill stray `cdb` processes and retry.
+- **Forensic-marker pattern for suspected hangs:** log the *inputs* of a
+  dangerous call (pointers, table offsets, header words) with `arena_dbg_u32`
+  BEFORE making it — the flushed log survives the hang and tells you what the
+  callee saw (this is how the `D_80115F34` garbage header was proven:
+  tags 45/46/47 = file base / offset / parsed count). Corollary: **validate
+  stream headers before trusting them** — `func_800122F0` mallocs sizes read
+  straight from data; a sanity guard (`1 <= count <= 16`) turns an infinite
+  hang into a logged no-op.
+- **A hung/running game locks the exe** — `lld-link: permission denied` on
+  the final link means kill `BMHeroRecompiled` first (it's often a forgotten
+  hung instance).
+- **Two-build discipline during crash hunts:** iterate on `build-rwdi`
+  (symbolized) only, and rebuild `build-cmake` (Release, `play.bat`) once at
+  the end — both share `patches/`, so `make -C patches clean` stays mandatory
+  between patch edits either way.
 - **Hands-off keyboard input to the game is UNRELIABLE** — SDL only takes keys
   when its window has focus, and a background script can't hold the foreground
   from inside the agent session. Working loop: agent builds + verifies
