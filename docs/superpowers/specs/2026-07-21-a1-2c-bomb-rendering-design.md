@@ -42,13 +42,16 @@ held-attach offset) are deferred.
 
 ## 3. Pooled bomb actors (spawn once, toggle per frame)
 
-Spawn a fixed pool of **8** bomb actors once (covers the 6-live-bomb cap with
-margin), mapped 1:1 to `bombs[0..7]`, using the proven recipe:
-`func_80027464(1, &info, x,y,z, 0)` with `info.unk4 = 9` (bomb mesh),
-`info.unk2 = OBJ_TOBIRA1_O` (benign objID), then `func_8001ABF4(slot, 0, 0,
-D_801163DC_ADDR)` (bind anim). Store each slot in a native bomb-slot table.
+Spawn a fixed pool of **16** bomb actors once, mapped 1:1 to `bombs[0..15]`
+(= `ARENA_MAX_BOMBS`), so every live bomb has an actor regardless of the cap
+(intended cap is 4/player = 16 total; the sim's current cap value is a
+placeholder and bumping it is a **sim** change for A1.3, not this slice). Use
+the proven recipe: `func_80027464(1, &info, x,y,z, 0)` with `info.unk4 = 9`
+(bomb mesh), `info.unk2 = OBJ_TOBIRA1_O` (benign objID), then
+`func_8001ABF4(slot, 0, 0, D_801163DC_ADDR)` (bind anim). Store each slot in a
+native bomb-slot table.
 
-Each frame, for bomb index `i` in `0..7`:
+Each frame, for bomb index `i` in `0..15`:
 - `arena_bomb_active(i)` (`bombs[i].state != BSTATE_FREE`) → set the actor's Pos
   from `arena_bomb_wx/wy/wz(i)` and `actionState = ACTION_IDLE` (visible);
 - else → `actionState = ACTION_NONE` (hidden).
@@ -68,7 +71,7 @@ shims + `REGISTER_FUNC`/`syms.ld` (the proven 4-step bridge, integration notes
 - `float arena_bomb_wx(int i)` — `g_origin_x + (qf(bombs[i].pos.x) - g_ref_sx) * g_scale`.
 - `float arena_bomb_wy(int i)` — `g_origin_y + (qf(bombs[i].pos.y) - g_ref_sy) * g_scale` (arc height).
 - `float arena_bomb_wz(int i)` — `g_origin_z + (qf(bombs[i].pos.z) - g_ref_sz) * g_scale_z`.
-- `void  arena_bomb_set_slot(int i, int slot)` / `int arena_bomb_get_slot(int i)` — bomb-slot table (size 8).
+- `void  arena_bomb_set_slot(int i, int slot)` / `int arena_bomb_get_slot(int i)` — bomb-slot table (size 16 = `ARENA_MAX_BOMBS`).
 
 (`g_origin_*`, `g_ref_s*`, `g_scale*`, `qf` are the existing puppet-mapping
 statics — reused so bombs share the players' frozen frame. **`g_ref_sy` is new**:
@@ -81,10 +84,11 @@ reads too tall/short that's a one-constant feel tweak.)
 
 The A1.2b sweep deactivates every `gObjects[14..77]` that isn't a player-puppet
 slot, each frame before the update loop. Bomb actors are **also ours**, so the
-sweep must exclude the 8 bomb slots too. Extend the exclusion set to
-`{player slots 1-3} ∪ {bomb slots 0-7}` (read via `arena_puppet_get_slot` /
+sweep must exclude the 16 bomb slots too. Extend the exclusion set to
+`{player slots 1-3} ∪ {bomb slots 0-15}` (read via `arena_puppet_get_slot` /
 `arena_bomb_get_slot`). Bomb actors' visibility is then owned solely by §3's
-per-frame toggle, not the sweep.
+per-frame toggle, not the sweep. Note: 3 players + 16 bombs = 19 actors in the
+64-slot `[14..77]` pool — ample (the arena's own objects are swept out first).
 
 ## 6. Input — wire set/kick (bit 14)
 
@@ -102,7 +106,23 @@ The sim input has bit 13 = bomb (hold-grab / release-throw; already wired to
 This lets player 0 set bombs (classic placement) as well as throw them, giving a
 more natural way to produce bombs for the demo.
 
-## 7. Non-goals (deferred, with owner)
+## 7. Consistency with Hero (graphics vs physics)
+
+- **Graphics are consistent by construction.** The render bridge drives the
+  game's own objects/assets — bombs use Hero's real bomb model (`gFileArray[9]`)
+  + animation (`D_801163DC`), so they look identical to the retail game. Nothing
+  to "recover"; it's reused directly. (The player-actor bomber mesh is the one
+  deferred graphics item — §8.5b, skeletal.)
+- **Physics are matched by transcription, not reuse.** The sim is a separate
+  deterministic fixed-point reimplementation (invariant #1: no floats in
+  `src/arena/`), so it can't run Hero's float physics — it matches them by
+  transcribing decomp constants into `arena_tuning.h`. The bomb **throw** (speed
+  35 / pitch 80° / fixed arc) is already decomp-transcribed and Hero-authentic,
+  so A1.2c bombs arc correctly *now*. The remaining constants (movement accel,
+  fuse duration, blast radius, kick speed, bomb cap) are placeholders → **A1.3**
+  (the tuning task) transcribes them. Full physics parity is A1.3, not here.
+
+## 8. Non-goals (deferred, with owner)
 
 - **Blasts / explosions → A1.2c slice 2** (needs an explosion-effect asset;
   candidates `gFileArray[0xA/0xB/0xC]`, `blasts[]` growth via `radius_t`/`ttl`).
@@ -113,7 +133,7 @@ more natural way to produce bombs for the demo.
   (the render is roster-general; the other 3 are idle).
 - No `bmhero-arena` sim changes (pinned hash `4b6687d4`).
 
-## 8. Build & testing
+## 9. Build & testing
 
 - Fork branch `feature/a1.2b-spawn-bombers` (continue) or a new
   `feature/a1.2c-bombs` — decide at plan time; touches `src/arena_bridge/*`
