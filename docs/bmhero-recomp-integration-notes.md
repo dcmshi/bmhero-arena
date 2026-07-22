@@ -149,13 +149,13 @@ Everything here is verified against the decomp at fork `master` as of 2026-07-20
 
 ## 8. Object system & multi-actor rendering — A1.2b (draw path SOLVED; positioning open)
 
-**Status (2026-07-21):** the "animated models can't draw via the general spawn"
-wall is **solved** — confirmed on screen: a bomb spawned beside the player
-renders and stays stable. The one remaining open item is multi-actor
-**positioning** (spreading actors to the sim's corners crashes), traced to the
-Battle Room's geometry. Fork checkpoint `feature/a1.2b-spawn-bombers` (`wip`
-commit). Supersedes the old "BLOCKED / no resident bomber model" analysis (that
-was a misdiagnosis — see §8.7).
+**Status (2026-07-21): A1.2b DONE with bomb placeholders.** All 4 players are
+puppeted on screen — player 0 (the campaign object) + 3 extra actors spawned
+into `gObjects[14..77]`, positioned from the sim, on a clean flat arena
+(`MAP_NITROS_1`, boss suppressed). Stable, no mirror, no crash. The only piece
+NOT done is swapping the bomb placeholder for the real bomber mesh (a skeletal-
+model follow-up, §8.5b). Fork branch `feature/a1.2b-spawn-bombers`. Supersedes
+the old "BLOCKED / no resident bomber model" analysis (a misdiagnosis — §8.7).
 
 ### 8.1 The working recipe (animated actor via general spawn)
 
@@ -216,23 +216,38 @@ CRASH, not be no-ops.
 - **Collision (`func_8001CD20`) runs regardless of objID.** An actor positioned
   OFF the platform / over a pit likely aborts here — the leading theory for §8.5.
 
-### 8.5 OPEN — multi-actor positioning crashes; the map is the suspect
+### 8.5 RESOLVED — positioning crash was the pits; fixed by a flat arena + boss sweep
 
-- **Spawn 3 parked** (all beside the player, on-platform): **STABLE** (slots
-  26/27/28, anim bound, `simpos` advances, no crash).
-- **Position 3 to sim corners** (scale 120 → ±540 units spread): **CRASHES**,
-  and the crash point *wanders* run-to-run (sometimes before any frame-1 marker)
-  → memory/state corruption or a fatal object–world interaction (collision over
-  a pit; the door "close" behaviour on our door-objID actors).
-- **The Battle Room (`MAP_BATTLE_ROOM`=2) is a poor arena/test map:** a central
-  platform surrounded by **pits** (positioned actors fall off → collision
-  abort), and a **door that closes on entry** (which our door-objID actors run).
-- **Next: a flat/open arena.** Change `ARENA_WARP_MAP` in `patches/arena_warp.c`
-  (currently `2`). Candidates to try (verify direct-warp loads clean + player
-  spawns): other battle rooms `MAP_HYPER_ROOM`(3)/`HEAVY`(4)/`SKY`(5)/`SECRET`(6);
-  debug stages 113–125; debug rooms `MAP_DEBUG_ROOM_EVERY_ITEM`(126)/
-  `MAP_DEBUG_ROOM_AGAIN`(127). Alternative if staying on a pit-map: clamp actor
-  positions on-platform, and/or find an inert objID + suppress collision.
+- **Root cause:** the Battle Room (`MAP_BATTLE_ROOM`=2) is a central platform
+  surrounded by **pits**. Positioning actors to the sim corners (scale 120 →
+  ±540 units spread) put them off the platform, where the game's per-object
+  collision (`func_8001CD20`, run on every active `[14..77]` object regardless
+  of objID) aborts — a crash whose point *wandered* run-to-run.
+- **Fix 1 — flat arena.** `ARENA_WARP_MAP` in `patches/arena_warp.c` now = `15`
+  (`MAP_NITROS_1`, a Nitros boss room — a big flat open floor, no pits). Loads
+  clean via the existing `gCurrentLevel` override (the warp is already a
+  direct-map bypass; no world/area setup needed). On flat ground the 3 actors
+  position + draw stably.
+- **Fix 2 — boss suppression.** A Nitros room spawns its boss, whose per-frame
+  behaviour is also flaky. In `arena_render_routine`, **before** `func_80024744`
+  (the update loop) runs, deactivate every `gObjects[14..77]` that isn't one of
+  our 3 puppet slots (`actionState = ACTION_NONE`). The floor is map geometry
+  (not in `gObjects`), so it survives. Result: clean 4-actor arena, stable.
+- Confirmed on screen: player + 3 bomb actors at the sim corners, holding
+  position as the player moves (no mirror), `simpos` advancing.
+
+### 8.5b FOLLOW-UP — real bomber mesh (skeletal model, deferred)
+
+The actors are **bomb placeholders** (`gFileArray[9]` + `func_8001ABF4` bomb
+config — single-part, one clean anim bind). Swapping to the real **bomber mesh**
+(`gFileArray[1]`, `func_8001BD44` cfg `0x13`) + a bomber anim config
+(`D_80101E8C` @ `0x80101E8C`) **spawns fine but the draw white-screens** (RSP
+abort on a malformed model). The player-bomber is a **multi-part SKELETAL
+model** — `code/4DFF0.c` loads it in a LOOP (`func_8001BD44(i, 0,
+D_80134794->unk34[i], gFileArray[1].ptr + D_80134794->unk14[i])`, per-part
+offsets from `D_80134794` @ `0x80134794`), and needs per-part skeletal anim
+binds, not one texture-anim config. Real bombers = replicate that multi-part
+load + skeletal binds + pick a neutral idle pose. Its own focused RE task.
 
 ### 8.6 The two object pools (don't cross them)
 

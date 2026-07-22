@@ -14,12 +14,15 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
 
 ## Current status (2026-07-21)
 
-**A1.2b in progress — draw path SOLVED, positioning open (2026-07-21).** The
-"animated models can't draw via the general spawn" wall is **broken**: an
-animated model (a bomb) now spawns into `gObjects[14..77]` via `func_80027464`
-and **draws on screen without crashing** — confirmed visually (bomb beside the
-player, stable). Full RE detail in **integration notes §8** (rewritten). Fork
-branch `feature/a1.2b-spawn-bombers` (`wip` checkpoint commit).
+**A1.2b complete — 4 actors on screen with bomb placeholders (2026-07-21).**
+The full simulated roster is puppeted in the arena: player 0 (the campaign
+object, A1.2a) + **3 extra actors spawned into `gObjects[14..77]`** via the
+game's own `func_80027464`, positioned from the sim, on a **clean flat arena**
+(`MAP_NITROS_1`, boss suppressed). Stable, no mirror, no crash — confirmed on
+screen. The "animated models can't draw via the general spawn" wall (was
+BLOCKED) is broken. Actors are **bomb placeholders**; the real bomber mesh is a
+scoped follow-up (skeletal model — §8.5b). Full RE detail in **integration
+notes §8** (rewritten). Fork branch `feature/a1.2b-spawn-bombers`.
 - **The unlock:** `func_80027464` loads model parts (`Unk140`) but not the
   animation instance an animated model needs; adding **`func_8001ABF4(slot,0,0,
   cfg)`** binds it (`Unk148`/`D_8016C298` pool) and the draw stops aborting.
@@ -28,15 +31,18 @@ branch `feature/a1.2b-spawn-bombers` (`wip` checkpoint commit).
   pass their **address as a literal** `((T*)0x801163DC)`; (2) the export ABI
   can't take float ARGS → pass floats as **`u32` bit patterns** through int args
   (union bitcast). Both cost hours; §8.2.
-- **Also:** objID drives per-frame `behaviour()` **and collision** on `[14..77]`
-  (`func_8002B154`); `OBJ_RPLATE` teleports the player, the room's door closes on
-  entry. Mesh is separable from objID (`func_8001BD44`; bomber=`gFileArray[1]`,
-  bomb=`gFileArray[9]`, both resident). Inert objID still TBD.
-- **OPEN:** spawning 3 actors *parked* is stable, but *positioning* them to the
-  sim's corners crashes (wandering crash point) — traced to the Battle Room's
-  **pits + entry door**: actors land off-platform where per-object collision
-  aborts. **Next: warp to a flat/open arena** (`ARENA_WARP_MAP` in
-  `patches/arena_warp.c`; candidates §8.5) instead of `MAP_BATTLE_ROOM`.
+- **Positioning fix:** the earlier positioning crash was the **Battle Room's
+  pits** — actors at the sim corners land off-platform, where per-object
+  collision (`func_8001CD20`, runs on all active `[14..77]` regardless of objID)
+  aborts. Fixed by warping to a **flat arena** (`ARENA_WARP_MAP`=15) + a
+  **boss-suppression sweep** (deactivate non-puppet `[14..77]` before the update
+  loop). §8.5.
+- **Real bomber mesh — follow-up (§8.5b):** swapping bomb (`gFileArray[9]`) →
+  bomber (`gFileArray[1]`, cfg `0x13`) spawns but **white-screens on draw** —
+  the player-bomber is a multi-part **skeletal** model (`4DFF0.c` loads it in a
+  loop w/ per-part offsets); needs per-part skeletal binds + an idle pose. A
+  scoped rendering sub-task. Inert objID also still TBD (door behaviour is
+  harmless now that neighbours are suppressed).
 - **Tooling:** `PrintWindow` screenshots (occlusion-proof), `arena_dbg_u32` →
   `arena_bridge.log` markers; hands-off keyboard input to the game is unreliable
   (SDL focus) — human does the ~15s room nav, agent builds + verifies (§8.8).
@@ -195,13 +201,14 @@ changes, that must be an intentional gameplay change.
    entry + battle-mode flag); A1.1b-ii done (Battle warps into
    MAP_BATTLE_ROOM); A1.1c dropped (room already clean; frontend-skip deferred
    as fragile/low-ROI).* Remaining:
-   **A1.2 render bridge** — A1.2a done (player puppeted from sim, on screen) →
-   A1.2b spawn+puppet 4 bombers → A1.2c bombs/blasts → anim + **camera-relative
+   **A1.2 render bridge** — A1.2a done (player puppeted from sim); A1.2b done
+   (spawn+puppet all 4 — bomb placeholders, clean flat arena) → *real bomber
+   mesh (skeletal, §8.5b)* → A1.2c bombs/blasts → anim + **camera-relative
    input** (fix forward/back feel via `gView`) + HUD. Render writes into
    `gObjects` entries from `ArenaState` (Q20.12 → Hero coords).
-   **Side task — arena-shell eval:** try a Nitros boss room as a bigger arena
-   (verify direct-warp loads clean, suppress the boss, swap `ARENA_WARP_MAP`;
-   currently `MAP_BATTLE_ROOM`).
+   **Side task — arena-shell eval: DONE.** Warped to a Nitros boss room
+   (`MAP_NITROS_1`) as the flat arena — direct-warp loads clean, boss suppressed
+   via the pre-update sweep; `ARENA_WARP_MAP`=15.
    **A1.3** transcribe every `TODO(feel)` constant in `arena_tuning.h` from the
    decomp (https://github.com/Bomberhackers/bmhero — start at `gPlayerObject`
    usage and the object update dispatch over `gObjects[207]`; Hack64 wiki has
