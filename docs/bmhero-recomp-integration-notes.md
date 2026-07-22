@@ -286,7 +286,40 @@ load + skeletal binds + pick a neutral idle pose. Its own focused RE task.
   from inside the agent session. Working loop: agent builds + verifies
   (screenshot + log); a human does the ~15s launcher→room nav.
 
-### 8.9 Draw/update gating & the neutral-input bug (still true)
+### 8.9 A1.2c slice 2 findings — effects, blasts, and THE load-crash fix (2026-07-22)
+
+- **THE stochastic load crash is FIXED.** The "black screen selecting battle"
+  that hit ~⅓ of arena boots all along (and contaminated the pool-ceiling
+  bisect, the spike attempts, and the neuter experiment) was an **upstream
+  debug print**: `required_patches.c` `load_from_rom_to_addr`'s `recomp_printf`
+  fires per ROM section load and races the loader. Symbolized RWDI dump named
+  the chain: `_Printf` indirect call → `get_function` "Failed to find function"
+  → `exit(1)` → atexit `thread_cleaner_thread` dtor → `terminate` →
+  `0xC0000409`. Disabled (commented out) — loads are stable since.
+  **Corollary: the "pool ceiling ~6-8 actors" finding is INVALID** (those
+  crashes were this race); larger pools were never re-tested.
+- **Game effect spawner (`func_80081468(id,x,y,z)`) is NOT usable in the
+  bypassed arena** (candidate for the real explosion visual): effects spawn and
+  live but render **invisible** (per-level effect assets missing?), and several
+  IDs crash — `0x2C1` (rain) via its lifecycle, `0x2C7` reproducibly in the
+  effect-list draw (`func_8001CDF4` ← `func_800818CC` ← the draw routine).
+  IDs `0x2BC/0x2BD/0x2C5` spawn+live harmlessly but show nothing. Using it
+  would need the effect-asset/init RE — deferred.
+- **Blast visual v1 (shipped): pooled "pop" actors.** 4 blast actors (bomb mesh
+  + anim bind, proven recipe) driven from `blasts[]`: shown at each live
+  blast's center for its 20-tick life, hidden after. Reads as a bomb-pop at the
+  detonation site (set-bomb pops are under the player — cosmetically hidden).
+- **The generic `[14..77]` draw IGNORES `ObjectStruct.Scale`** — writing
+  Scale 1→12× produced no visible growth (the bomb-pool `[2..5]` draw path
+  does use Scale). So size-animated visuals need another mechanism.
+- **Boss re-activates if the sweep stops** (tested: entry-window-only sweep →
+  boss returned) — the every-frame sweep stays. Neutering the level's
+  `unk24/unk28` spawn hooks instead white-screens (they also do draw setup).
+- **Tooling:** `build-rwdi` (RelWithDebInfo, PDB) + `playrwdi.bat` — crash
+  dumps symbolize (this is what cracked the load crash); machinery reference:
+  `docs/bmhero-recomp-patch-machinery-reference.md`.
+
+### 8.10 Draw/update gating & the neutral-input bug (still true)
 
 - **Draw vs update are separately gated** (`boot/17930.c`): `gDebugRoutine1()`
   (draw, line 1562) and `gDebugRoutine2()` (update, line 1797, our

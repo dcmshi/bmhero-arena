@@ -12,7 +12,27 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
   player struct, input, camera, coord mapping) — read before any A1.2+ work
 - `README.md` — this repo's layout, build, and the five invariants
 
-## Current status (2026-07-21)
+## Current status (2026-07-22)
+
+**A1.2c complete — blasts render as pops; THE load crash fixed (2026-07-22).**
+Slice 2 shipped the fallback blast visual: 4 pooled blast actors (bomb mesh,
+proven recipe) appear at each live `blasts[]` center for the blast's 20-tick
+life — detonations now give visible feedback at the right spot (spread → up to
+4 pops). The game's effect spawner (`func_80081468`) was investigated and
+**abandoned** for the bypassed arena (effects invisible; two IDs crash — §8.9).
+**Two big wins from the debugging:** (1) the **stochastic "black screen
+selecting battle" crash is fixed** — an upstream debug print in
+`load_from_rom_to_addr` racing the loader (named by a symbolized RWDI dump);
+it had contaminated earlier findings, so the "pool ceiling" result is invalid.
+(2) **Symbolized-dump tooling** now exists (`build-rwdi` + `playrwdi.bat`) and
+a source-level **patch-machinery reference**
+(`docs/bmhero-recomp-patch-machinery-reference.md`) corrects earlier folklore
+(data symbols resolve from `data_dump.toml`; Release `0xC0000409` = uncaught
+exception; patch `.data/.bss` is memory-backed). Also: the generic `[14..77]`
+draw **ignores `Scale`**; the boss re-activates if the sweep stops (every-frame
+sweep stays). Follow-ups: real explosion visual (effect-asset RE), real bomber
+mesh (§8.5b), re-test larger bomb pools. Fork branch
+`feature/a1.2b-spawn-bombers`.
 
 **A1.2c slice 1 complete — bombs render + set/kick wired (2026-07-21).** The
 sim's live bombs are drawn in the arena: a pool of 6 bomb actors
@@ -222,11 +242,12 @@ changes, that must be an intentional gameplay change.
    MAP_BATTLE_ROOM); A1.1c dropped (room already clean; frontend-skip deferred
    as fragile/low-ROI).* Remaining:
    **A1.2 render bridge** — A1.2a done (player puppeted from sim); A1.2b done
-   (spawn+puppet all 4 — bomb placeholders, clean flat arena); A1.2c slice 1
-   done (bombs render + set/kick wired) → *A1.2c slice 2 bombs' blasts/
-   explosions* → *real bomber mesh (skeletal, §8.5b)* → anim + **camera-relative
-   input** (fix forward/back feel via `gView`) + HUD. Render writes into
-   `gObjects` entries from `ArenaState` (Q20.12 → Hero coords).
+   (spawn+puppet all 4 — bomb placeholders, clean flat arena); A1.2c done
+   (bombs render + set/kick wired; blasts render as pops — real explosion
+   visual deferred, needs effect-asset RE, §8.9) → *real bomber mesh
+   (skeletal, §8.5b)* → anim + **camera-relative input** (fix forward/back
+   feel via `gView`) + HUD. Render writes into `gObjects` entries from
+   `ArenaState` (Q20.12 → Hero coords).
    **Side task — arena-shell eval: DONE.** Warped to a Nitros boss room
    (`MAP_NITROS_1`) as the flat arena — direct-warp loads clean, boss suppressed
    via the pre-update sweep; `ARENA_WARP_MAP`=15.
