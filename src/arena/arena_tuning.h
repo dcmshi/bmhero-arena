@@ -11,15 +11,21 @@
 
 /* Units: 1.0q ~= 1 world unit; ticks are 1/60s. */
 
-/* -- movement -- TODO(feel): transcribe from decomp player update */
-#define TUNE_RUN_SPEED       Q(0.085)   /* max ground speed per tick */
-#define TUNE_RUN_ACCEL       Q(0.010)   /* toward target vel per tick */
-#define TUNE_RUN_FRICTION    Q(0.008)   /* decel when stick neutral */
-#define TUNE_AIR_CONTROL     Q(0.004)   /* accel while airborne */
-#define TUNE_JUMP_IMPULSE    Q(0.140)   /* TODO(feel) */
-#define TUNE_GRAVITY         Q(0.0075)  /* TODO(feel) */
+/* -- movement -- A1.3: transcribed from docs/bmhero-player-movement-re.md
+ * ## Speed (60 Hz => Hz factor 1.0; height anchor S=0.0084034; q = game_u/frame x S). */
+#define TUNE_RUN_SPEED       Q(0.084)   /* game top 10 u/f x S */
+#define TUNE_RUN_ACCEL       Q(0.00168) /* game 0.2 u/f x S — ~7x lower than the old placeholder = the momentum feel */
+#define TUNE_RUN_FRICTION    Q(0.00168) /* game friction == accel (single 0.2 u/f rate) */
+#define TUNE_JUMP_IMPULSE    Q(0.280)    /* game 33.333 u/f x S (was Q(0.140)) */
+#define TUNE_GRAVITY         Q(0.0175)   /* game 2.0833 u/f^2 x S (was Q(0.0075)) */
+#define TUNE_TERMINAL_VY     Q(-0.403)   /* game -48 u/f x S (NEW — sim had no clamp) */
+#define TUNE_AIR_CONTROL     Q(0.00168)  /* = TUNE_RUN_ACCEL: full air control per RE (low-confidence/empirical) */
 #define TUNE_PLAYER_RADIUS   Q(0.35)
 #define TUNE_PLAYER_HEIGHT   Q(1.0)
+#define TUNE_TURN_RATE       0x0889     /* binary-angle units/tick (~12deg/frame). EMPIRICAL seed:
+                                         * campaign turn rate is undecompiled asm (movement-re.md
+                                         * ## Turn). Finalized by feel; structure is transcribed,
+                                         * rate is not. */
 
 /* -- bombs -- TODO(feel): calibrate against decomp bmhero src/code/69AA0.c
  * during A1. Verified there: throw is a FIXED launch (pitch 80deg, speed 35,
@@ -63,6 +69,6 @@
 #define TUNE_ROUNDS_TO_WIN   3
 
 /* Bump when any value changes; folded into the session version hash. */
-#define TUNE_VERSION         2
+#define TUNE_VERSION         3      /* A1.3: movement dynamics transcribed (was 2) */
 
 #endif

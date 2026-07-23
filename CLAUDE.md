@@ -14,6 +14,31 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
 
 ## Current status (2026-07-22)
 
+**A1.3 movement dynamics complete — sim-only, no fork changes (2026-07-22
+late).** The campaign player's free-walk physics (`docs/bmhero-player-movement-re.md`,
+decomp-sourced from the auto-runner `code_extra_3` + shared `func_8002D080`/
+vertical routines) are transcribed into `arena_sim.c`'s `player_tick`: **no-strafe
+scalar-speed-along-facing** (a single `moveSpeed` accelerates/decelerates toward a
+stick-magnitude target at one rate — accel == friction — then velocity is rebuilt
+each tick as `speed × (sin(yaw), −cos(yaw))`, replacing the old per-axis
+stick-vector accel) plus a **gradual bounded turn** toward the stick target
+(replacing the instant `p->yaw = dir` snap; rate is the one empirical GAP — no
+decomp source for the standard walker's turn, seeded ≈12°/frame). Vertical
+physics are now the **real game constants** (jump impulse, gravity, and a new
+terminal-velocity clamp the old sim lacked). This is an **intentional gameplay
+change**: `TUNE_VERSION` 2 → **3**, and the CI-pinned scripted-match hash is
+re-pinned `4b6687d4` → **`5f500fcb`** (regenerated with the exact CI hash
+generator, confirmed deterministic across 6 local runs). New `tests/test_movement.c`
+guards the model (turn-toward-target, scalar-speed accel/decel/clamp, terminal
+velocity) and is now wired into `.github/workflows/determinism.yml` as its own
+step on every matrix leg, right after the existing determinism-test step. No
+`src/arena/*.c` logic beyond the transcription changed; no fork/render-bridge
+work in this slice. Local gate green: `test_det` → `ALL TESTS PASSED`;
+`test_movement` → `ALL MOVEMENT TESTS PASSED` (both also verified under
+`-Wextra -Werror`, matching CI's flags exactly). Next: player set/kick
+**animations** + feedback, **A1.2g** arena hardening (exit trigger, damage
+tiles), HUD.
+
 **A1.2e closed + A1.2f harness shipped — input direction is native-correct;
 the load-crash class is fixed at its mechanism; boots are machine-verified
 (2026-07-22 evening).** The headline discovery (§8.11): **the game already
@@ -302,19 +327,19 @@ changes, that must be an intentional gameplay change.
    deferred — anims not arena-resident; next attempt starts at the
    player-path anim-bind trace, §8.5b); A1.2e closed (input direction =
    native-correct raw pass-through, §8.11; func_map crash class fixed,
-   §8.12); A1.2f done (boot-soak harness) → **A1.3 dynamics/feel** (decomp
-   transcription: `Math_CalcAngleRotated`, speed/accel/turn — the remaining
-   feel gap) + player anims (set/kick feedback) + **A1.2g arena hardening**
+   §8.12); A1.2f done (boot-soak harness); **A1.3 done** (movement dynamics
+   transcribed from the decomp — scalar-speed-along-facing, gradual turn,
+   real jump/gravity/terminal; sim-only, `TUNE_VERSION` 3, hash `5f500fcb`) →
+   next: player anims (set/kick feedback) + **A1.2g arena hardening**
    (exit trigger, damage tiles) + HUD. Render writes into `gObjects`
    entries from `ArenaState` (Q20.12 → Hero coords).
    **Side task — arena-shell eval: DONE.** Warped to a Nitros boss room
    (`MAP_NITROS_1`) as the flat arena — direct-warp loads clean, boss suppressed
    via the pre-update sweep; `ARENA_WARP_MAP`=15.
-   **A1.3** transcribe every `TODO(feel)` constant in `arena_tuning.h` from the
-   decomp (https://github.com/Bomberhackers/bmhero — start at `gPlayerObject`
-   usage and the object update dispatch over `gObjects[207]`; Hack64 wiki has
-   supplementary RE notes; throw/spread/kick constants already extracted). All
-   constants go only in `arena_tuning.h`.
+   **A1.3 — DONE.** Movement dynamics transcribed into `arena_tuning.h` +
+   `arena_sim.c` per `docs/bmhero-player-movement-re.md` (turn rate remains the
+   one empirical GAP — no decomp source for the standard walker; seeded
+   ≈12°/frame, tune by feel in the fork).
 2. **A3 online hardening** (ROM-free): rendezvous server + lobby codes,
    host-relay fallback via a custom GekkoNet adapter, 4P mesh WAN soak,
    desync surfacing UI, automatic player-slot assignment (arena doc §6).

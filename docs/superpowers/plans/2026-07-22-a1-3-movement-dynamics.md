@@ -63,13 +63,18 @@ git commit -m "docs(A1.3): RE findings - campaign player movement physics + unit
 - Modify: `src/arena/arena_tuning.h` (add `TUNE_TURN_RATE`)
 - Create: `tests/test_movement.c`
 
-**Interfaces:**
-- Consumes: Task 1 `## Turn` (the deg/frame rate). Sim binary-angle: `bin_per_tick = deg_per_frame × 65536/360 × HzFactor`.
-- Produces: `p->yaw` now rotates toward the stick target at ≤ `TUNE_TURN_RATE` binary-units/tick (short-arc). Later tasks keep using `p->yaw` for velocity direction + facing.
+**POST-TASK-1 (approved approach B):** the RE (`docs/bmhero-player-movement-re.md`) found the campaign turn RATE is undecompiled asm — it is a documented GAP, set EMPIRICALLY (not transcribed). The RE also confirmed logic runs at **60 Hz (Hz factor 1.0)** and the game model is **no-strafe scalar-speed-along-facing** (velocity locked to facing; user-approved). This task adds the gradual turn; Task 3 does the scalar-speed restructure.
 
-- [ ] **Step 1: Add the constant** in `arena_tuning.h` under the movement block (value FILL from `## Turn`; the example below is a placeholder rate of ~11.25°/tick = 0x0800):
+**Interfaces:**
+- Consumes: Task 1 `## Turn` (target-angle formula; rate is the empirical seed below). Sim binary-angle: `bin_per_tick = deg_per_frame × 65536/360`.
+- Produces: `p->yaw` now rotates toward the stick target at ≤ `TUNE_TURN_RATE` binary-units/tick (short-arc). Task 3 keeps using `p->yaw` for velocity direction + facing.
+
+- [ ] **Step 1: Add the constant** in `arena_tuning.h` under the movement block. Value = the RE's empirical seed ~12°/frame = `12 × 65536/360 ≈ 2185` = `0x0889` (this is a GAP knob, finalized by the end-of-slice feel boot — NOT a transcribed value):
 ```c
-#define TUNE_TURN_RATE       0x0800     /* binary-angle units/tick; FILL from movement-re.md ## Turn (deg/frame x 65536/360 x HzFactor) */
+#define TUNE_TURN_RATE       0x0889     /* binary-angle units/tick (~12deg/frame). EMPIRICAL seed:
+                                         * campaign turn rate is undecompiled asm (movement-re.md
+                                         * ## Turn). Finalized by feel; structure is transcribed,
+                                         * rate is not. */
 ```
 
 - [ ] **Step 2: Write the failing test** — `tests/test_movement.c`:
@@ -156,12 +161,16 @@ git commit -m "feat(A1.3): bounded turn rate replaces instant yaw snap (+model t
 ### Task 3: Speed / acceleration / momentum
 
 **Files:**
-- Modify: `src/arena/arena_sim.c` (`player_tick` accel block ~lines 142-147)
+- Modify: `src/arena/arena_sim.c` (`player_tick` — the velocity-target block from Task 2 + the accel block ~lines 142-147)
 - Modify: `src/arena/arena_tuning.h` (`TUNE_RUN_SPEED/ACCEL/FRICTION`)
 - Modify: `tests/test_movement.c` (add speed tests)
 
+**POST-TASK-1 (approved approach B):** the RE settled the model as **no-strafe scalar-speed-along-facing** (user-approved) — this task RESTRUCTURES the per-axis velocity-target accel into: a scalar speed accelerated toward a stick-magnitude target, then velocity projected along the (gradually-turning) facing. Not optional. Real transcribed constants below (60 Hz, height scale S=0.0084034).
+
 **Interfaces:**
-- Consumes: Task 1 `## Speed`, `## Units`. Keeps the accel-to-target structure if Phase 1 confirms it matches; else restructures per findings (document the deviation inline).
+- Consumes: Task 1 `## Speed`, `## Units`; Task 2's `p->yaw` turn.
+- Produces: `p->vel.{x,z} = speed × (sin, -cos)(p->yaw)` where `speed` accelerates toward `mag × TUNE_RUN_SPEED`.
+- **Scalar-speed source (architectural decision — no ArenaState layout change):** derive the scalar each tick from horizontal velocity magnitude, `speed = qlen2(p->vel.x, p->vel.z)`, then accelerate and re-project. In the no-strafe model velocity is always along facing, so `|vel|` recovers the scalar losslessly and NO new player field is needed (avoids the layout/static_assert/padding ripple). **Guard the whole restructured core with `p->state != PSTATE_TUMBLE`** so knockback velocity (not along facing) is left untouched.
 
 - [ ] **Step 1: Add speed tests** to `tests/test_movement.c` before `main`, and call them from `main`:
 ```c
@@ -197,15 +206,31 @@ Add `test_top_speed_and_accel();` to `main` before the pass/fail print.
 
 - [ ] **Step 2: Run — expect PASS already** if Phase 1 confirms the current accel-to-target structure matches the game (the test guards the model; constants set in Step 3). If Phase 1 mandates a structural change (e.g. speed-dependent accel), it will FAIL here first — implement the change in Step 3 to pass. Run: `gcc ... -o tm ... && ./tm`.
 
-- [ ] **Step 3: Transcribe the constants** in `arena_tuning.h` (values FILL from `## Speed`+`## Units`; drop the `TODO(feel)` marker on each as sourced). Example structure with the conversion shown in the comment:
+- [ ] **Step 3: Transcribe the constants + restructure.** Set the values in `arena_tuning.h` (transcribed from `docs/bmhero-player-movement-re.md ## Speed`, S=0.0084034, 60 Hz factor 1.0; drop the `TODO(feel)` markers):
 ```c
-/* -- movement -- A1.3: transcribed from docs/bmhero-player-movement-re.md.
- * Conversion: q = game_units_per_frame x (Q_per_gameunit) x (60/gameHz). */
-#define TUNE_RUN_SPEED       Q(0.085)   /* FILL: top moveSpeed x scale (per-tick @60Hz) */
-#define TUNE_RUN_ACCEL       Q(0.010)   /* FILL: moveSpeed accel/frame x scale x HzFactor */
-#define TUNE_RUN_FRICTION    Q(0.008)   /* FILL: neutral decel/frame x scale x HzFactor */
+/* -- movement -- A1.3: transcribed from docs/bmhero-player-movement-re.md
+ * (60 Hz => Hz factor 1.0; height anchor S=0.0084034; q = game_u/frame x S). */
+#define TUNE_RUN_SPEED       Q(0.084)   /* game top 10 u/f x S */
+#define TUNE_RUN_ACCEL       Q(0.00168) /* game 0.2 u/f x S — ~7x lower than the old placeholder = the momentum feel */
+#define TUNE_RUN_FRICTION    Q(0.00168) /* game friction == accel (single 0.2 u/f rate) */
 ```
-If Phase 1 requires restructuring the accel block (`arena_sim.c` ~142-147), do it here with an inline comment citing the findings heading; keep it int64/fixed-point and branch-free where the current code is.
+Then restructure the `player_tick` movement core to no-strafe scalar-speed-along-facing (guarded by `p->state != PSTATE_TUMBLE`). The shape (integrate exactly, keep int64/fixed-point; `acc` still picks `TUNE_AIR_CONTROL` when airborne per Task 4, `TUNE_RUN_FRICTION` when the target speed is 0 on the ground):
+```c
+    q32 target_speed = 0;
+    if (gameplay && p->state != PSTATE_TUMBLE) {
+        /* ... deadzone + mag as today; Task 2's turn updates p->yaw ... */
+        if (mag > Q(0.10)) target_speed = qmul(TUNE_RUN_SPEED, mag);   /* turn done in Task 2 block */
+    }
+    q32 acc = on_ground(p) ? TUNE_RUN_ACCEL : TUNE_AIR_CONTROL;
+    if (target_speed == 0 && on_ground(p) && p->state != PSTATE_TUMBLE) acc = TUNE_RUN_FRICTION;
+    if (p->state != PSTATE_TUMBLE) {
+        q32 speed = qlen2(p->vel.x, p->vel.z);
+        speed += qclamp(target_speed - speed, -acc, acc);
+        p->vel.x =  qmul(qsin(p->yaw), speed);
+        p->vel.z = -qmul(qcos(p->yaw), speed);
+    }
+```
+This replaces the old per-axis `p->vel.x += qclamp(sx - p->vel.x, ...)` block (~142-147) and the `sx/sz` target vector Task 2 computed. Fold Task 2's turn + this into one coherent movement core; velocity is now locked to facing (no strafe).
 
 - [ ] **Step 4: Run movement + determinism — expect PASS.** `./tm` → `ALL MOVEMENT TESTS PASSED`; **[test]** → `ALL TESTS PASSED`.
 
@@ -224,10 +249,12 @@ git commit -m "feat(A1.3): transcribe run speed/accel/friction from campaign phy
 - Modify: `src/arena/arena_tuning.h` (`TUNE_JUMP_IMPULSE/GRAVITY/AIR_CONTROL`)
 - Modify: `tests/test_movement.c` (add airborne test)
 
-**Interfaces:**
-- Consumes: Task 1 `## Airborne`, `## Units`.
+**POST-TASK-1:** vertical physics are HIGH-confidence in the RE (two decompiled sources agree). Transcribe directly (60 Hz, S=0.0084034) and ADD a terminal-velocity clamp the sim currently lacks. Full air control per the RE (`TUNE_AIR_CONTROL` = `TUNE_RUN_ACCEL`), flagged low-confidence/empirical.
 
-- [ ] **Step 1: Locate the gravity application.** Grep `TUNE_GRAVITY` in `arena_sim.c` to find where `vel.y` is decremented and `pos.y` integrated; the airborne test asserts against that integration.
+**Interfaces:**
+- Consumes: Task 1 `## Airborne`, `## Units`. Adds `TUNE_TERMINAL_VY`.
+
+- [ ] **Step 1: Locate the gravity application.** Grep `TUNE_GRAVITY` in `arena_sim.c` to find where `vel.y` is decremented and `pos.y` integrated; the airborne test asserts against that integration, and the terminal clamp goes here.
 
 - [ ] **Step 2: Add the airborne test** to `tests/test_movement.c` and call it from `main`:
 ```c
@@ -254,9 +281,16 @@ static void test_jump_arc(void) {
 }
 ```
 
-- [ ] **Step 3: Run — expect PASS against current constants** (model guards); if Phase 1 mandates a gravity/air-steering structural change it fails first, fix in Step 4.
+- [ ] **Step 3: Run — expect FAIL first** (the test derives apex/airtime from the NEW constants added in Step 4; against the old placeholders the arithmetic won't match). Then Step 4 sets the values and adds the clamp to make it pass.
 
-- [ ] **Step 4: Transcribe** `TUNE_JUMP_IMPULSE`, `TUNE_GRAVITY`, `TUNE_AIR_CONTROL` in `arena_tuning.h` (FILL from `## Airborne`+`## Units`, conversion commented; drop `TODO(feel)`). Apply any air-steering structural change in `player_tick` if findings require, citing the heading.
+- [ ] **Step 4: Transcribe + add the terminal clamp.** In `arena_tuning.h` (transcribed from `## Airborne`, S=0.0084034, 60 Hz):
+```c
+#define TUNE_JUMP_IMPULSE    Q(0.280)    /* game 33.333 u/f x S (was Q(0.140)) */
+#define TUNE_GRAVITY         Q(0.0175)   /* game 2.0833 u/f^2 x S (was Q(0.0075)) */
+#define TUNE_TERMINAL_VY     Q(-0.403)   /* game -48 u/f x S (NEW — sim had no clamp) */
+#define TUNE_AIR_CONTROL     Q(0.00168)  /* = TUNE_RUN_ACCEL: full air control per RE (low-confidence/empirical) */
+```
+In `player_tick`'s gravity integration, after `p->vel.y -= TUNE_GRAVITY`, add `if (p->vel.y < TUNE_TERMINAL_VY) p->vel.y = TUNE_TERMINAL_VY;`. Keep int64/fixed-point.
 
 - [ ] **Step 5: Run movement + determinism — expect PASS.** `./tm` and **[test]**.
 

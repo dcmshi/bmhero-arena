@@ -22,6 +22,12 @@ jobs:
           ${{ matrix.cc }} -std=c11 -Wall -Wextra -Werror ${{ matrix.opt }} \
             -o test_det src/arena/arena_sim.c tests/test_determinism.c
           ./test_det
+      - name: movement model tests
+        shell: bash
+        run: |
+          ${{ matrix.cc }} -std=c11 -Wall -Wextra -Werror ${{ matrix.opt }} \
+            -o test_mv src/arena/arena_sim.c tests/test_movement.c
+          ./test_mv
       # Cross-platform hash equality: every job must produce this exact final
       # state hash for the scripted match. Update ONLY on intentional sim change
       # (and bump TUNE_VERSION / netcode version accordingly).
@@ -47,4 +53,4 @@ jobs:
           ${{ matrix.cc }} -std=c11 ${{ matrix.opt }} -I. -o hash_check hash_main.c src/arena/arena_sim.c
           h=$(./hash_check)
           echo "hash: $h"
-          test "$h" = "4b6687d4"
+          test "$h" = "5f500fcb"

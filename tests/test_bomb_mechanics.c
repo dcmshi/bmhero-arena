@@ -124,9 +124,39 @@ static void test_set_and_walkin_kick_wall(void) {
     run(&s, NEUTRAL, 30);
     CHECK(s.bombs[bi].state == BSTATE_SETTLED, "no insta-kick while standing on it");
 
-    /* step away (+Z), then run back (-Z) into it: walk-in kick toward wall */
-    run(&s, arena_input_pack(0, 31, 0, 0, 0), 20);    /* walk +Z, clears grace */
-    run(&s, arena_input_pack(0, -31, 0, 0, 0), 30);   /* run -Z back into bomb */
+    /* step away (+Z), then run back (-Z) into it: walk-in kick toward wall.
+     * A1.3 (no-strafe scalar-speed-along-facing) means the 180deg reversal
+     * is a bounded-rate TURN, not an instant flip: the scalar speed carries
+     * through the turn and gets re-projected onto the sweeping facing, so
+     * the player physically ARCS sideways during the ~15-tick turn (radius
+     * grows with speed-at-turn-start) before settling back onto the
+     * reverse heading. A too-long away phase (the original 60 ticks, ~344
+     * raw-Q speed, near TUNE_RUN_SPEED cap) makes that arc wide enough
+     * (~0.85 world-units of permanent X offset) to carry the player clear
+     * past the bomb's touch radius (TUNE_PLAYER_RADIUS+TUNE_BOMB_RADIUS =
+     * 0.65) for the whole return leg — the bomb then never gets touched and
+     * the test only "passes" because the untouched BSTATE_SETTLED bomb's
+     * own TUNE_FUSE_TICKS timer runs out while the two run() calls are
+     * still executing (150-tick fuse vs. a ~190-tick drive here). That is
+     * vacuous: BSTATE_FREE and live_bombs==0 are reached for the wrong
+     * reason (fuse pop, not kick).
+     * Fix: a SHORTER away phase keeps speed-at-turn-start low, which tightens
+     * the arc back inside the touch radius so the return leg re-crosses the
+     * bomb. 32 ticks away / 40 back (tools/scratch dbgkick3 sweep,
+     * away=28..37 all land a genuine kick; 32 sits mid-band with margin on
+     * both sides — 25/26/27 arc too wide to touch, 38+ arcs too wide again
+     * the other way) empirically verified via a per-tick state trace: the
+     * bomb goes BSTATE_SETTLED -> BSTATE_SLIDING at back-tick 20 with the
+     * player in contact (dist < touch, speed >= TUNE_KICK_MIN_VEL) and fuse
+     * still at 67/150 (well above 0 — not a timeout), then SLIDING -> FREE
+     * at back-tick 29 with the bomb pinned against the -Z wall
+     * (bpos.z == -(6.0 - TUNE_BOMB_RADIUS)) and fuse still 59 (again nowhere
+     * near 0) — a genuine walk-in kick that slides into the wall, not a fuse
+     * pop. Total budget (1 set + 30 stand + 32 away + 40 back = 103 ticks
+     * before the kick, 112 before the wall hit) stays comfortably under the
+     * 150-tick fuse the whole way. */
+    run(&s, arena_input_pack(0, 31, 0, 0, 0), 32);    /* walk +Z, clears grace */
+    run(&s, arena_input_pack(0, -31, 0, 0, 0), 40);   /* run -Z back into bomb */
     CHECK(s.bombs[bi].state == BSTATE_SLIDING || s.bombs[bi].state == BSTATE_FREE,
           "walk-in kicks the bomb (state=%d)", s.bombs[bi].state);
     /* slides into the -Z boundary wall and detonates on contact */
@@ -140,8 +170,14 @@ static void test_kick_hits_player(void) {
     start4(&s);                       /* P3 spawns at (+4.5, -4.5) */
     run(&s, arena_input_pack(0, 0, 0, 0, 1), 1);      /* set at the feet */
     run(&s, NEUTRAL, 1);
-    run(&s, arena_input_pack(-31, 0, 0, 0, 0), 20);   /* step away -X */
-    run(&s, arena_input_pack(31, 0, 0, 0, 0), 30);    /* run +X into the bomb */
+    /* A1.3's slower accel + gradual 180deg turn need more travel/turn time
+     * than the old instant-snap model to clear grace and land the kick
+     * (see test_set_and_walkin_kick_wall for the full derivation); 40/60
+     * (was 20/30) measured empirically to still be genuinely BSTATE_SLIDING
+     * (not yet exploded) right after the run-back, leaving room to travel
+     * on and hit P3 during the wait below. */
+    run(&s, arena_input_pack(-31, 0, 0, 0, 0), 40);   /* step away -X */
+    run(&s, arena_input_pack(31, 0, 0, 0, 0), 60);    /* run +X into the bomb */
     int bi = -1;
     for (int i = 0; i < ARENA_MAX_BOMBS; i++)
         if (s.bombs[i].state == BSTATE_SLIDING) { bi = i; break; }
@@ -156,10 +192,18 @@ static void test_fuse_pops_mid_slide(void) {
     ArenaState s;
     start2(&s);
     run(&s, arena_input_pack(0, 0, 0, 0, 1), 1);      /* set */
-    run(&s, NEUTRAL, 89);                             /* burn most of the fuse */
-    run(&s, arena_input_pack(-31, 0, 0, 0, 0), 20);   /* step away -X */
-    run(&s, arena_input_pack(31, 0, 0, 0, 0), 30);    /* run +X into the bomb:
-                                                         kick with ~10 fuse left */
+    /* A1.3: the step-away + run-back round trip now needs ~100 ticks of
+     * fuse budget (slower accel to clear grace + gradual 180deg turn —
+     * see test_set_and_walkin_kick_wall), which doesn't fit under the old
+     * 89-tick pre-burn against a 150-tick fuse. Burn less up front (30, was
+     * 89) so there's still genuine fuse left (measured: kicked around fuse
+     * ~51) when the walk-in kick lands; it then keeps burning while
+     * SLIDING and pops before the bomb could reach a wall (kick travel in
+     * the remaining budget stays well under the ~10.5-unit clear run) —
+     * still exercises "only the fuse can have popped it". */
+    run(&s, NEUTRAL, 30);                             /* burn some of the fuse */
+    run(&s, arena_input_pack(-31, 0, 0, 0, 0), 40);   /* step away -X */
+    run(&s, arena_input_pack(31, 0, 0, 0, 0), 60);    /* run +X into the bomb */
     run(&s, NEUTRAL, 30);
     /* +X has ~10 clear units; only the fuse can have popped it */
     int sliding = 0;
