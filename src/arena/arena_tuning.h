@@ -11,10 +11,11 @@
 
 /* Units: 1.0q ~= 1 world unit; ticks are 1/60s. */
 
-/* -- movement -- TODO(feel): transcribe from decomp player update */
-#define TUNE_RUN_SPEED       Q(0.085)   /* max ground speed per tick */
-#define TUNE_RUN_ACCEL       Q(0.010)   /* toward target vel per tick */
-#define TUNE_RUN_FRICTION    Q(0.008)   /* decel when stick neutral */
+/* -- movement -- A1.3: transcribed from docs/bmhero-player-movement-re.md
+ * ## Speed (60 Hz => Hz factor 1.0; height anchor S=0.0084034; q = game_u/frame x S). */
+#define TUNE_RUN_SPEED       Q(0.084)   /* game top 10 u/f x S */
+#define TUNE_RUN_ACCEL       Q(0.00168) /* game 0.2 u/f x S — ~7x lower than the old placeholder = the momentum feel */
+#define TUNE_RUN_FRICTION    Q(0.00168) /* game friction == accel (single 0.2 u/f rate) */
 #define TUNE_AIR_CONTROL     Q(0.004)   /* accel while airborne */
 #define TUNE_JUMP_IMPULSE    Q(0.140)   /* TODO(feel) */
 #define TUNE_GRAVITY         Q(0.0075)  /* TODO(feel) */

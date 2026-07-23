@@ -124,8 +124,13 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
     int gameplay = (s->phase == PHASE_PLAY || s->phase == PHASE_SUDDEN_DEATH);
     ArenaInput prev = p->last_input;
 
-    /* stick -> world-XZ target velocity (fixed camera: stick maps directly) */
-    q32 sx = 0, sz = 0;
+    /* stick -> gradual turn toward the target heading, then a no-strafe
+     * scalar-speed-along-facing core (movement-re.md ## Speed): the game
+     * accelerates a scalar moveSpeed toward a stick-magnitude target and
+     * rotates it by facing every frame — there is no independent per-axis
+     * strafe velocity, so turning redirects existing momentum instead of
+     * resetting it. */
+    q32 target_speed = 0;
     if (gameplay && p->state != PSTATE_TUMBLE) {
         int ix = arena_input_sx(in), iy = arena_input_sy(in);
         q32 mag = qlen2(Q(ix) / AIN_STICK_MAX, Q(iy) / AIN_STICK_MAX);
@@ -137,18 +142,21 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
             if (delta >  step) delta =  step;
             if (delta < -step) delta = -step;
             p->yaw = (uint16_t)(p->yaw + delta);
-            q32 spd = qmul(TUNE_RUN_SPEED, mag);
-            sx = qmul(qsin(p->yaw), spd);
-            sz = -qmul(qcos(p->yaw), spd);
+            target_speed = qmul(TUNE_RUN_SPEED, mag);
         }
     }
 
-    /* accel toward target vel (ground) / drift (air) */
+    /* accel the scalar speed toward its target (ground) / drift (air), then
+     * project along facing — no strafe: vel is always parallel to p->yaw. */
     q32 acc = on_ground(p) ? TUNE_RUN_ACCEL : TUNE_AIR_CONTROL;
-    if (sx == 0 && sz == 0 && on_ground(p) && p->state != PSTATE_TUMBLE)
+    if (target_speed == 0 && on_ground(p) && p->state != PSTATE_TUMBLE)
         acc = TUNE_RUN_FRICTION;
-    p->vel.x += qclamp(sx - p->vel.x, -acc, acc);
-    p->vel.z += qclamp(sz - p->vel.z, -acc, acc);
+    if (p->state != PSTATE_TUMBLE) {
+        q32 speed = qlen2(p->vel.x, p->vel.z);
+        speed += qclamp(target_speed - speed, -acc, acc);
+        p->vel.x =  qmul(qsin(p->yaw), speed);
+        p->vel.z = -qmul(qcos(p->yaw), speed);
+    }
 
     /* jump (edge) */
     if (gameplay && p->state != PSTATE_TUMBLE && on_ground(p)

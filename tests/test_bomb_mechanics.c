@@ -124,9 +124,19 @@ static void test_set_and_walkin_kick_wall(void) {
     run(&s, NEUTRAL, 30);
     CHECK(s.bombs[bi].state == BSTATE_SETTLED, "no insta-kick while standing on it");
 
-    /* step away (+Z), then run back (-Z) into it: walk-in kick toward wall */
-    run(&s, arena_input_pack(0, 31, 0, 0, 0), 20);    /* walk +Z, clears grace */
-    run(&s, arena_input_pack(0, -31, 0, 0, 0), 30);   /* run -Z back into bomb */
+    /* step away (+Z), then run back (-Z) into it: walk-in kick toward wall.
+     * A1.3 (no-strafe scalar-speed-along-facing, ~7x lower TUNE_RUN_ACCEL
+     * than the old placeholder) needs much longer than the old instant-snap
+     * model to (a) physically clear the setter's grace radius (touch+0.1)
+     * while accelerating from rest, and (b) turn the full 180deg (gradual,
+     * TUNE_TURN_RATE-limited) and carve back into contact — the player now
+     * arcs through the turn (velocity is locked to facing) rather than
+     * reversing in place. 60/60 ticks (was 20/30) measured empirically
+     * (tools/scratch trace) to clear grace and land the kick; still asserts
+     * the same kick mechanics (contact + TUNE_KICK_MIN_VEL), just gives the
+     * slower player time to get there. */
+    run(&s, arena_input_pack(0, 31, 0, 0, 0), 60);    /* walk +Z, clears grace */
+    run(&s, arena_input_pack(0, -31, 0, 0, 0), 60);   /* run -Z back into bomb */
     CHECK(s.bombs[bi].state == BSTATE_SLIDING || s.bombs[bi].state == BSTATE_FREE,
           "walk-in kicks the bomb (state=%d)", s.bombs[bi].state);
     /* slides into the -Z boundary wall and detonates on contact */
@@ -140,8 +150,14 @@ static void test_kick_hits_player(void) {
     start4(&s);                       /* P3 spawns at (+4.5, -4.5) */
     run(&s, arena_input_pack(0, 0, 0, 0, 1), 1);      /* set at the feet */
     run(&s, NEUTRAL, 1);
-    run(&s, arena_input_pack(-31, 0, 0, 0, 0), 20);   /* step away -X */
-    run(&s, arena_input_pack(31, 0, 0, 0, 0), 30);    /* run +X into the bomb */
+    /* A1.3's slower accel + gradual 180deg turn need more travel/turn time
+     * than the old instant-snap model to clear grace and land the kick
+     * (see test_set_and_walkin_kick_wall for the full derivation); 40/60
+     * (was 20/30) measured empirically to still be genuinely BSTATE_SLIDING
+     * (not yet exploded) right after the run-back, leaving room to travel
+     * on and hit P3 during the wait below. */
+    run(&s, arena_input_pack(-31, 0, 0, 0, 0), 40);   /* step away -X */
+    run(&s, arena_input_pack(31, 0, 0, 0, 0), 60);    /* run +X into the bomb */
     int bi = -1;
     for (int i = 0; i < ARENA_MAX_BOMBS; i++)
         if (s.bombs[i].state == BSTATE_SLIDING) { bi = i; break; }
@@ -156,10 +172,18 @@ static void test_fuse_pops_mid_slide(void) {
     ArenaState s;
     start2(&s);
     run(&s, arena_input_pack(0, 0, 0, 0, 1), 1);      /* set */
-    run(&s, NEUTRAL, 89);                             /* burn most of the fuse */
-    run(&s, arena_input_pack(-31, 0, 0, 0, 0), 20);   /* step away -X */
-    run(&s, arena_input_pack(31, 0, 0, 0, 0), 30);    /* run +X into the bomb:
-                                                         kick with ~10 fuse left */
+    /* A1.3: the step-away + run-back round trip now needs ~100 ticks of
+     * fuse budget (slower accel to clear grace + gradual 180deg turn —
+     * see test_set_and_walkin_kick_wall), which doesn't fit under the old
+     * 89-tick pre-burn against a 150-tick fuse. Burn less up front (30, was
+     * 89) so there's still genuine fuse left (measured: kicked around fuse
+     * ~51) when the walk-in kick lands; it then keeps burning while
+     * SLIDING and pops before the bomb could reach a wall (kick travel in
+     * the remaining budget stays well under the ~10.5-unit clear run) —
+     * still exercises "only the fuse can have popped it". */
+    run(&s, NEUTRAL, 30);                             /* burn some of the fuse */
+    run(&s, arena_input_pack(-31, 0, 0, 0, 0), 40);   /* step away -X */
+    run(&s, arena_input_pack(31, 0, 0, 0, 0), 60);    /* run +X into the bomb */
     run(&s, NEUTRAL, 30);
     /* +X has ~10 clear units; only the fuse can have popped it */
     int sliding = 0;
