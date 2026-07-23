@@ -35,9 +35,25 @@ step on every matrix leg, right after the existing determinism-test step. No
 `src/arena/*.c` logic beyond the transcription changed; no fork/render-bridge
 work in this slice. Local gate green: `test_det` → `ALL TESTS PASSED`;
 `test_movement` → `ALL MOVEMENT TESTS PASSED` (both also verified under
-`-Wextra -Werror`, matching CI's flags exactly). Next: player set/kick
-**animations** + feedback, **A1.2g** arena hardening (exit trigger, damage
-tiles), HUD.
+`-Wextra -Werror`, matching CI's flags exactly).
+
+**A1.3 fork feel-test + facing SOLVED (2026-07-23).** The fork
+(`feature/a1.3-feel`, submodule bumped to the merged A1.3 `ba7c346`) was
+rebuilt and the new movement **user-confirmed good** — momentum, gradual
+turn, no-strafe, and the bigger jump all feel right. **Facing** (the last
+gap, carried from A1.2e) is fixed by copying the game's own value 1:1:
+`gPlayerObject->Rot.y = gPlayerObject->moveAngle` (integration notes §8.11).
+Deriving facing from sim yaw or dx/dz fought turn-lag + angle conventions
+(read 90°/45° off, inconsistent); the game already computes the authentic
+`moveAngle` from the camera-rotated stick each frame, so we borrow it (we
+still drive position from the sim). Machine-verified via a game-truth probe
+(logs the game's `moveAngle`/`Vel` vs our sim yaw/dx/dz) + green soaks on
+every handoff. **Empirical knobs still open for a later feel pass:** the turn
+rate (~12°/frame seed) and the 60-vs-30 Hz question — the user did NOT report
+movement 2× fast, so 60 Hz stands for now. Puppet facing is a yaw-placeholder
+(invisible on symmetric bomb-mesh placeholders; revisit with the real bomber
+mesh). Next: player set/kick **animations** + feedback, **A1.2g** arena
+hardening (exit trigger, damage tiles), HUD.
 
 **A1.2e closed + A1.2f harness shipped — input direction is native-correct;
 the load-crash class is fixed at its mechanism; boots are machine-verified

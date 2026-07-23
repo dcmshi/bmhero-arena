@@ -441,10 +441,24 @@ player 0 (on-screen since A1.2a).
 - `struct View` (`types.h:257`): **`.at` @0x00 BEFORE `.eye` @0x0C** (then
   rot/up/dist). `rot.y` = the canonical camera yaw in degrees; the arena rail
   camera swings 25–89° across the room and CUTS (eye teleports ~1800u).
-- **Facing:** game moves along `(+sin θ, +cos θ)` (`2BF00.c:480`, moveAngle°),
-  the sim along `(+sin yaw, −cos yaw)` → `Rot.y = 180 − sim_yaw` (derived, not
-  tuned). `moveAngle = Math_CalcAngleRotated(stickX, −stickY)` (`2BF00.c:488`)
-  — the anchor for A1.3's dynamics transcription (speed curve, accel, turn).
+- **Facing — SOLVED (A1.3, 2026-07-23): copy the game's own `moveAngle` 1:1.**
+  `gPlayerObject->Rot.y = gPlayerObject->moveAngle`. The game's player update
+  (`func_80024744`, which our render wrapper calls) computes `moveAngle`
+  authentically from the camera-rotated stick every frame; it's live and
+  correct in the bypassed arena (probe-verified: `moveAngle =
+  Math_Atan2f(Vel.x,Vel.z)`, e.g. 218.3 for Vel(−11.16,−14.12)). We drive
+  POSITION from the sim but borrow the game's facing — authentic by
+  construction, user-confirmed. History (dead ends, don't retry): deriving
+  `Rot.y` from our **sim yaw** (`180−yaw`, then ±90 offsets) read 90° then 45°
+  off and *inconsistent* — because sim yaw turns gradually (A1.3 turn rate) so
+  a yaw-derived facing LAGS the real movement during turns; deriving from the
+  per-frame `dx/dz` via `Math_Atan2f` also fought angle-convention mismatches.
+  The game snaps `moveAngle` while our sim eases the turn, so facing may lead
+  the body slightly mid-turn — cosmetic, accepted. Puppets (players 1–3) can't
+  use this (not `gPlayerObject`, positioned absolutely) — they keep a
+  yaw-placeholder, invisible while they're symmetric bomb-mesh placeholders
+  (revisit with the real bomber mesh). `Math_CalcAngleRotated(stickX,−stickY)`
+  (`2BF00.c:488`) remains the stick→moveAngle formula of record.
 - **Ground bombs rendered below the floor**: bomb/blast `wy` is now clamped to
   `origin_y` (native bridge) — set bombs were sim-live (`live=1..3` on the
   user's Q presses) yet invisible; thrown bombs arc above the floor and always
