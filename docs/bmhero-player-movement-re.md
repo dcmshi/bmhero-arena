@@ -214,7 +214,8 @@ mover give **identical** constants, and these are the only vertical numbers in t
 - **Air steering** — in the auto-runner, `func_802811F8`/`func_80281294` keep calling the
   speed and lateral updates **while airborne**, i.e. **full control in air** (no reduction).
   Standard-walk air control is unknown; recommend equal-to-ground or a mild reduction and
-  tune empirically. (The sim's `TUNE_AIR_CONTROL` placeholder = Q(0.004).)
+  tune empirically. (A1.3 SHIPPED `TUNE_AIR_CONTROL` = Q(0.00168) = full air control,
+  i.e. equal to ground accel; low-confidence/empirical — revisit in the feel pass.)
 - Integration order (`func_80281314:397-400`): state machine → gravity (`func_80280BD8`) →
   move/collide (`func_80280000`). Jump is an **edge-triggered instantaneous `Vel.y` set**,
   matching the sim's structure.
