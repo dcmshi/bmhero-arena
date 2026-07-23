@@ -76,9 +76,32 @@ static void test_top_speed_and_accel(void) {
     CHECK(t90 > 0 && t90 <= expect+3, "reached 90%% speed in %d ticks, expected <=~%d", t90, expect);
 }
 
+/* One jump from rest: measure airtime (ticks from launch to landing) and apex. */
+static void test_jump_arc(void) {
+    ArenaState s; arena_init(&s,0,1,1); s.phase=PHASE_PLAY;
+    ArenaInput in[ARENA_MAX_PLAYERS];
+    ArenaInput neutral=arena_input_pack(0,0,0,0,0);
+    for(int i=0;i<ARENA_MAX_PLAYERS;i++) in[i]=neutral;
+    q32 apex=0; int air=0; int launched=0;
+    for(int t=1;t<=240;t++){
+        in[0] = (t==1) ? arena_input_pack(0,0,1,0,0) /* jump edge */ : neutral;
+        arena_tick(&s, in);
+        if(s.players[0].pos.y>0){ launched=1; air++; if(s.players[0].pos.y>apex) apex=s.players[0].pos.y; }
+        else if(launched) break;
+    }
+    /* apex ~ impulse^2/(2*gravity); airtime ~ 2*impulse/gravity (ticks) */
+    q32 expect_apex = qdiv(qmul(TUNE_JUMP_IMPULSE,TUNE_JUMP_IMPULSE), qmul(Q(2),TUNE_GRAVITY));
+    q32 aerr = apex>expect_apex?apex-expect_apex:expect_apex-apex;
+    CHECK(launched, "jump produced no airborne frames");
+    CHECK(aerr <= qmul(expect_apex,Q(0.15)), "apex %d vs expected %d (>15%%)", apex, expect_apex);
+    int expect_air = (2*TUNE_JUMP_IMPULSE)/TUNE_GRAVITY;
+    CHECK(air>=expect_air-4 && air<=expect_air+4, "airtime %d ticks vs ~%d", air, expect_air);
+}
+
 int main(void){
     test_turn_is_gradual();
     test_top_speed_and_accel();
+    test_jump_arc();
     if(!failures){ printf("ALL MOVEMENT TESTS PASSED\n"); return 0; }
     printf("%d FAILURE(S)\n", failures); return 1;
 }

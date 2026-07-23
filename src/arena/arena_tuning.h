@@ -16,9 +16,10 @@
 #define TUNE_RUN_SPEED       Q(0.084)   /* game top 10 u/f x S */
 #define TUNE_RUN_ACCEL       Q(0.00168) /* game 0.2 u/f x S — ~7x lower than the old placeholder = the momentum feel */
 #define TUNE_RUN_FRICTION    Q(0.00168) /* game friction == accel (single 0.2 u/f rate) */
-#define TUNE_AIR_CONTROL     Q(0.004)   /* accel while airborne */
-#define TUNE_JUMP_IMPULSE    Q(0.140)   /* TODO(feel) */
-#define TUNE_GRAVITY         Q(0.0075)  /* TODO(feel) */
+#define TUNE_JUMP_IMPULSE    Q(0.280)    /* game 33.333 u/f x S (was Q(0.140)) */
+#define TUNE_GRAVITY         Q(0.0175)   /* game 2.0833 u/f^2 x S (was Q(0.0075)) */
+#define TUNE_TERMINAL_VY     Q(-0.403)   /* game -48 u/f x S (NEW — sim had no clamp) */
+#define TUNE_AIR_CONTROL     Q(0.00168)  /* = TUNE_RUN_ACCEL: full air control per RE (low-confidence/empirical) */
 #define TUNE_PLAYER_RADIUS   Q(0.35)
 #define TUNE_PLAYER_HEIGHT   Q(1.0)
 #define TUNE_TURN_RATE       0x0889     /* binary-angle units/tick (~12deg/frame). EMPIRICAL seed:

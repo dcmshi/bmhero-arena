@@ -247,6 +247,7 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
 
     /* gravity + integrate */
     p->vel.y -= TUNE_GRAVITY;
+    if (p->vel.y < TUNE_TERMINAL_VY) p->vel.y = TUNE_TERMINAL_VY;
     p->pos.x += p->vel.x; p->pos.y += p->vel.y; p->pos.z += p->vel.z;
     collide_static(&p->pos, &p->vel, TUNE_PLAYER_RADIUS, g, wall_extent);
 
