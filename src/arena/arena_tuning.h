@@ -69,6 +69,6 @@
 #define TUNE_ROUNDS_TO_WIN   3
 
 /* Bump when any value changes; folded into the session version hash. */
-#define TUNE_VERSION         2
+#define TUNE_VERSION         3      /* A1.3: movement dynamics transcribed (was 2) */
 
 #endif
