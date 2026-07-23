@@ -125,18 +125,38 @@ static void test_set_and_walkin_kick_wall(void) {
     CHECK(s.bombs[bi].state == BSTATE_SETTLED, "no insta-kick while standing on it");
 
     /* step away (+Z), then run back (-Z) into it: walk-in kick toward wall.
-     * A1.3 (no-strafe scalar-speed-along-facing, ~7x lower TUNE_RUN_ACCEL
-     * than the old placeholder) needs much longer than the old instant-snap
-     * model to (a) physically clear the setter's grace radius (touch+0.1)
-     * while accelerating from rest, and (b) turn the full 180deg (gradual,
-     * TUNE_TURN_RATE-limited) and carve back into contact — the player now
-     * arcs through the turn (velocity is locked to facing) rather than
-     * reversing in place. 60/60 ticks (was 20/30) measured empirically
-     * (tools/scratch trace) to clear grace and land the kick; still asserts
-     * the same kick mechanics (contact + TUNE_KICK_MIN_VEL), just gives the
-     * slower player time to get there. */
-    run(&s, arena_input_pack(0, 31, 0, 0, 0), 60);    /* walk +Z, clears grace */
-    run(&s, arena_input_pack(0, -31, 0, 0, 0), 60);   /* run -Z back into bomb */
+     * A1.3 (no-strafe scalar-speed-along-facing) means the 180deg reversal
+     * is a bounded-rate TURN, not an instant flip: the scalar speed carries
+     * through the turn and gets re-projected onto the sweeping facing, so
+     * the player physically ARCS sideways during the ~15-tick turn (radius
+     * grows with speed-at-turn-start) before settling back onto the
+     * reverse heading. A too-long away phase (the original 60 ticks, ~344
+     * raw-Q speed, near TUNE_RUN_SPEED cap) makes that arc wide enough
+     * (~0.85 world-units of permanent X offset) to carry the player clear
+     * past the bomb's touch radius (TUNE_PLAYER_RADIUS+TUNE_BOMB_RADIUS =
+     * 0.65) for the whole return leg — the bomb then never gets touched and
+     * the test only "passes" because the untouched BSTATE_SETTLED bomb's
+     * own TUNE_FUSE_TICKS timer runs out while the two run() calls are
+     * still executing (150-tick fuse vs. a ~190-tick drive here). That is
+     * vacuous: BSTATE_FREE and live_bombs==0 are reached for the wrong
+     * reason (fuse pop, not kick).
+     * Fix: a SHORTER away phase keeps speed-at-turn-start low, which tightens
+     * the arc back inside the touch radius so the return leg re-crosses the
+     * bomb. 32 ticks away / 40 back (tools/scratch dbgkick3 sweep,
+     * away=28..37 all land a genuine kick; 32 sits mid-band with margin on
+     * both sides — 25/26/27 arc too wide to touch, 38+ arcs too wide again
+     * the other way) empirically verified via a per-tick state trace: the
+     * bomb goes BSTATE_SETTLED -> BSTATE_SLIDING at back-tick 20 with the
+     * player in contact (dist < touch, speed >= TUNE_KICK_MIN_VEL) and fuse
+     * still at 67/150 (well above 0 — not a timeout), then SLIDING -> FREE
+     * at back-tick 29 with the bomb pinned against the -Z wall
+     * (bpos.z == -(6.0 - TUNE_BOMB_RADIUS)) and fuse still 59 (again nowhere
+     * near 0) — a genuine walk-in kick that slides into the wall, not a fuse
+     * pop. Total budget (1 set + 30 stand + 32 away + 40 back = 103 ticks
+     * before the kick, 112 before the wall hit) stays comfortably under the
+     * 150-tick fuse the whole way. */
+    run(&s, arena_input_pack(0, 31, 0, 0, 0), 32);    /* walk +Z, clears grace */
+    run(&s, arena_input_pack(0, -31, 0, 0, 0), 40);   /* run -Z back into bomb */
     CHECK(s.bombs[bi].state == BSTATE_SLIDING || s.bombs[bi].state == BSTATE_FREE,
           "walk-in kicks the bomb (state=%d)", s.bombs[bi].state);
     /* slides into the -Z boundary wall and detonates on contact */
