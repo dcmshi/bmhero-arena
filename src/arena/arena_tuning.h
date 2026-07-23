@@ -20,6 +20,10 @@
 #define TUNE_GRAVITY         Q(0.0075)  /* TODO(feel) */
 #define TUNE_PLAYER_RADIUS   Q(0.35)
 #define TUNE_PLAYER_HEIGHT   Q(1.0)
+#define TUNE_TURN_RATE       0x0889     /* binary-angle units/tick (~12deg/frame). EMPIRICAL seed:
+                                         * campaign turn rate is undecompiled asm (movement-re.md
+                                         * ## Turn). Finalized by feel; structure is transcribed,
+                                         * rate is not. */
 
 /* -- bombs -- TODO(feel): calibrate against decomp bmhero src/code/69AA0.c
  * during A1. Verified there: throw is a FIXED launch (pitch 80deg, speed 35,

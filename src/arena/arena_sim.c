@@ -131,11 +131,15 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
         q32 mag = qlen2(Q(ix) / AIN_STICK_MAX, Q(iy) / AIN_STICK_MAX);
         if (mag > Q_ONE) mag = Q_ONE;
         if (mag > Q(0.10)) {                       /* deadzone */
-            uint16_t dir = iatan2(Q(ix), Q(-iy));  /* stick up = -Z (into screen) */
+            uint16_t target = iatan2(Q(ix), Q(-iy));  /* stick up = -Z (into screen) */
+            int16_t delta = (int16_t)(target - p->yaw);       /* short-arc signed */
+            int16_t step  = (int16_t)TUNE_TURN_RATE;
+            if (delta >  step) delta =  step;
+            if (delta < -step) delta = -step;
+            p->yaw = (uint16_t)(p->yaw + delta);
             q32 spd = qmul(TUNE_RUN_SPEED, mag);
-            sx = qmul(qsin(dir), spd);
-            sz = -qmul(qcos(dir), spd);
-            p->yaw = dir;
+            sx = qmul(qsin(p->yaw), spd);
+            sz = -qmul(qcos(p->yaw), spd);
         }
     }
 
