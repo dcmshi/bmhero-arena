@@ -316,6 +316,78 @@ load window.** Loads verified stable since.
 `gObjects[slot].Rot.y` each frame after `func_80024744()`; same convention as
 player 0 (on-screen since A1.2a).
 
+### 8.5c Player action animations — A1.4 RE (set-bomb recovered; kick has no anim; 2026-07-24)
+
+**Goal:** play the game's own player action anims (set-bomb, kick) on `gPlayerObject`
+when the sim registers those events, and **auto-verify via the harness** (read back the
+live anim index/frame — no eyeballing). Decomp/recomp-only pass (zero boots). Sources:
+hand-decomp `lib/bmhero/src` + the recomp's machine-C `RecompiledFuncs/funcs_*.c` (which
+DOES contain the un-migrated player walker overlays — the key unlock this slice).
+
+**The trigger primitive (HIGH).** `func_8001C0EC(objID, part, animIdx, fileID, table)`
+(`boot/17930.c:1187`): computes `src = &gFileArray[fileID].ptr[table[animIdx]]` and calls
+`func_8001BE6C(objID, part, animIdx, src)` (`17930.c:1159`), which **frees + re-mallocs
+only the small per-anim instance** (`D_80165290[slot].unk20`, via `func_8001191C`
+`10AB0.c:431`) and sets `unk14 = animIdx`. It **re-points, does not reload** the model
+(the model slot `Unk140[part]` and `modelTag` are preserved). `gPlayerObject == &gObjects[0]`.
+
+**The arena player runs `code_extra_0`, table `D_80115808` (bank/fileID 1) — NOT
+`code_extra_1`.** The per-world player controller is picked by `D_8016523E`
+(`code/76640.c:911`); the arena warps to a normal campaign level (`MAP_NITROS_1`), which
+uses **world 0 = `code_extra_0`** (overlay `128D20`). **Proof:** the fork's own
+`patches/teleporter_obj.c` is a `RECOMP_PATCH` of `func_80284668_code_extra_0` that calls
+`func_8001C0EC(0, 0, 7, 1, &D_80115808)` on the live player. `D_80115808` is a **53-entry**
+table (anim idx 0-52); `code_extra_1`'s `D_80115CF8` is a disjoint 25-entry table (different,
+smaller anim file). **Correction:** an earlier pass keyed on `code_extra_1` (set = idx 11,
+table `0x80115CF8`) — that is the WRONG overlay for the arena; its indices do NOT transfer.
+
+**`D_80115808` resolves directly in patches** (it's in `data_dump.toml`, proven by
+teleporter_obj.c using `&D_80115808`) — so no literal-address workaround (§8.2) is needed
+for the table. The set trigger is the exact proven form, just a different index:
+```c
+extern s32 D_80115808[];
+func_8001C0EC(0, 0, 29, 1, &D_80115808);   /* set/drop-bomb pose, state 0x0E */
+```
+
+**Set-bomb pose = anim 29 (MEDIUM; harness-confirm).** `code_extra_0` state `0x0E` =
+`PLAYER_ACTION_DROP_BOMB_0` (`code/69AA0.c:6`), handler `func_80282E5C_code_extra_0`
+(`RecompiledFuncs/funcs_53.c:4830`) plays `func_8001C0EC(0,0,29,1,&D_80115808)`. MEDIUM
+because the state↔index binding is read from machine-C, not visually confirmed; the harness
+read-back (below) is the objective gate — and the game's OWN walker sets 0x0E/anim 29 on a
+Z-press in-arena, so pressing set and reading `func_8001B880(0,0)` discovers/confirms it.
+
+**Kick has NO player animation (definitive).** Bomberman Hero offense is grab→charge→throw,
+not a walk-into kick. The walk-in kick is **100% bomb-side**: `func_8007AD60`
+(`69AA0.c:877-917`) does the bomb `0x24→0x27` slide (reads `gPlayerObject` for facing but
+NEVER writes it or calls the anim primitive). In the real game the player just keeps its
+locomotion anim while a bomb slides. `69AA0.c` contains **zero** `func_8001C0EC` calls.
+Options for the arena's kick feedback (decision open): (a) **no special pose** — keep
+locomotion (most authentic, recommended); (b) a **throw** anim as a "shove" stand-in
+(`code_extra_0` throw poses 34/36/38/39/42) — arm/upper-body lunge, not a leg kick;
+(c) the set/drop pose 29 as a stomp-down. There is no faithful kick to match.
+
+**Read-back for auto-verify (getters resolve as functions in patches — no `D_80165290`
+deref needed).** With `slot = gObjects[0].Unk140[0]` (part 0 = body):
+- `func_8001B880(0,0)` → current anim index (`unk14`) — `17930.c:1088`
+- `func_8001B62C(0,0)` → frame counter (`unk24`, advances +2.0/frame, rounded even) — `17930.c:1071`
+- `func_8001B44C(0,0)` → nonzero when the clip finished (`unk16 & 2`) — `17930.c:1048`
+Verify a triggered set: index → 29 AND the frame counter advances. `D_80165290` is the
+256-slot model-anim pool (`variables.h:589`, element `0x70`; `types.h:309`); `Unk140` is
+`s16[4]` @ obj `0x140` (`obj.h:128`), the slot index into that pool.
+
+**Full `code_extra_0` action map** (objID 0, bank 1, table `D_80115808`; state 0xA4 →
+animIdx): the actions occupy states `0x0B`-`0x36`, anim idx up to ~52 — set/drop `0x0E`→29,
+throws `0x17/0x19/0x27/0x28/0x2C/0x30/0x31/0x33/0x35`→{34,36,38,39,42,47…}, impact/hurt
+`0x1B-0x22`→{43,44,47,48,49}, warp `0x2E`→7, idle 0, locomotion 1-8. (Machine-C derived;
+throw/impact/warp HIGH via called helpers, the rest inferred from clip ordering.)
+
+**Next (Phase 2/3, spec `docs/superpowers/specs/2026-07-24-a1-4-set-kick-animations-design.md`):**
+native read-only exports of the read-back getters + a probe that injects a set press and
+asserts index→29 with the frame counter advancing (the objective gate); then a bridge
+set-edge export (bomb `FREE→SETTLED`, `owner==i`; kick = `SETTLED→SLIDING`, `bounced==i+1`
+— mirrors `arena_blast_new`, no sim change, hash `5f500fcb` held) driving the trigger on
+the sim edge for player 0, guarded to play once per event and return to locomotion.
+
 ### 8.6 The two object pools (don't cross them)
 
 - `gObjects[2..5]` = the **bomb pool** (`Get_InactiveObject`, `69AA0.c:434`);

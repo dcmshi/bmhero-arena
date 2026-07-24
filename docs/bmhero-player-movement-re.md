@@ -17,6 +17,57 @@ exact stick→target-angle mapping and a recommended empirical starting point.
 
 ---
 
+## UPDATE 2026-07-24 — the standard walker IS recoverable (from `RecompiledFuncs`)
+
+**The "unrecoverable" verdict above was scoped to the hand-decomp only.** The N64Recomp
+tool machine-translates *every* ROM function — **including the un-migrated `code_extra_0`
+walker** — into C under `C:\Users\dshi\GitRepos\BMHeroRecomp\RecompiledFuncs\funcs_*.c`.
+A read-only pass over that (2026-07-24, dispatch `func_8028AA70_code_extra_0`
+@ `funcs_53.c:6490`) recovered **both** the turn rate and the real speed model at **HIGH
+confidence**, and the speed numbers **correct** the auto-runner values we ported.
+
+**Turn rate = 4.0 deg/frame (bounded).** Per-frame turn `func_80281E50_code_extra_0`
+(`funcs_52.c:5478`, called from ~10 locomotion states): reads target `D_801651D4` + current
+`moveAngle`, steps via `dir = func_800157EC(cur, tgt, thr)` (-1/0/+1 shortest-path,
+`math_util.c:176`) then `moveAngle = Math_WrapAngle(moveAngle + dir*4.0)`. STEP `4.0`
+= `0x40800000` (`funcs_52.c:5638`, applied `:5750`). Snap/deadzone threshold 2.0 deg (4.0 when
+target >90 deg away); no turn while stick in deadzone; **single fixed step, accel == decel.**
+Special: states 5/6/29/34 snap instantly (thr 360), states 15/16 keep 1.0 deg; normal
+walk/run = 4.0. => the guessed **~12 deg/frame was 3x too fast** — the real walker has far
+more turn momentum (180 deg = 45 frames = 0.75 s @60 Hz).
+
+**Speed model corrects the ported auto-runner numbers.** Structure matches (scalar
+`moveSpeed` -> velocity along facing, no strafe; `func_802804CC_code_extra_0` @
+`funcs_52.c:9112`), but constants differ sharply:
+
+| | auto-runner (A1.3 shipped) | **standard walker (real)** | note |
+|---|---|---|---|
+| top speed | 10.0 | **18.0** | 1.8x |
+| accel (flat, ground) | 0.2 | **1.5** | 7.5x |
+| decel | 0.2 (=accel) | 1.5 (=accel) | symmetric |
+| accel/top => frames to top | 0.02 => ~50 | **0.083 => ~12** (0.2 s) | far snappier |
+| air accel | full | **1.0** (67% of ground); turn unchanged 4.0 | |
+| target-speed input | stick-Y tiers -7..10 | **stick-magnitude tiers 0 / 6 / 12 / 18** (mag thr 10/35/60) | discrete 4 levels |
+
+Anchors: stick-tier `func_8028130C` `funcs_51.c:3684` (table ROM `0x133EC4` = `{0,6,12,18}`);
+accel `func_80281BA4` `funcs_51.c:4856` (rate `D_8016E278` = 1.5 ground / 1.0 air, slope term
+`D_8016E270` = 0 flat); velocity build `funcs_52.c:9112`; classifier `funcs_53.c:4`.
+
+**Scale-anchor caveat:** the doc's S = 0.0084034 was chosen *circularly* to make top-speed
+10 match the existing `TUNE_RUN_SPEED = Q(0.085)`. With the real top = **18**, that mapping is
+no longer self-consistent — re-derive the spatial scale (or accept a different top-speed sim
+value) if applying. The **anchor-independent ratios** (accel/top, frames-to-top, turn
+deg/frame) are the robust part.
+
+**STATUS — documentation only (not applied).** A1.3 SHIPPED the auto-runner-derived values
+(`TUNE_VERSION` 3, CI hash `5f500fcb`) and the movement was **user-confirmed good** in the
+fork feel-test (2026-07-23). Adopting these recovered authentic numbers is a **separate,
+intentional sim change** (bump `TUNE_VERSION`, re-derive constants incl. the scale anchor,
+re-pin the CI hash, re-test + re-feel) — deliberately **not done in this pass**. This block
+records the findings so that change can be made on a decision.
+
+---
+
 ## Why the standard walker is unreadable (trace + gate evidence)
 
 The per-frame player dispatch is `func_80087994` (`lib/bmhero/src/code/76640.c:901-927`):
@@ -276,7 +327,7 @@ Game model:
 | Logic Hz = 60 | **high** | scheduler code; contradicts old 30 Hz assumption — verify by feel |
 | Unit scale (height, S=0.0084) | **medium-high** | corroborated by top-speed↔placeholder match; ratios are anchor-free |
 | Jump / gravity / terminal | **high** | two independent decompiled sources agree; game-global |
-| Speed accel 0.2, top 10, friction=accel | **medium** | from the decompiled auto-runner; free-walk numbers unconfirmed |
+| Speed model (real walker) | **high** (recovered 2026-07-24) | real `code_extra_0`: accel **1.5**, top **18** (`funcs_51.c:4856`, table `0x133EC4`); the ported auto-runner 0.2/10 is a DIFFERENT controller. Not yet applied — see UPDATE block |
 | Scalar-speed-along-facing structure | **high** | shared `func_8002D080` integration |
-| **Turn rate (deg/frame)** | **NONE** | undecompiled `code_extra_0` asm; empirical only — GAP |
-| Air-control reduction | **low** | auto-runner uses full air control; free-walk unknown |
+| **Turn rate (deg/frame)** | **high** (recovered 2026-07-24) | real `code_extra_0`: **4.0 deg/frame** bounded (`funcs_52.c:5638`); supersedes the ~12 deg/frame seed. Not yet applied — see UPDATE block |
+| Air-control reduction | **high** (recovered 2026-07-24) | real `code_extra_0`: air accel 1.0 (67% of ground 1.5); turn unchanged 4.0 deg. Not yet applied |
