@@ -19,7 +19,7 @@ void arena_init(ArenaState* s, uint8_t arena_id, uint8_t num_players, uint32_t s
     s->phase       = PHASE_COUNTDOWN;
     s->phase_timer = TUNE_COUNTDOWN_TICKS;
 
-    const ArenaGeom* g = &arena_geoms[arena_id];
+    const ArenaGeom* g = arena_geoms[arena_id];   /* registry is an array of pointers */
     for (int i = 0; i < num_players; i++) {
         ArenaPlayer* p = &s->players[i];
         p->pos   = g->spawns[i];
@@ -268,7 +268,7 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
 /* ------------------------------------------------------------ main tick */
 
 void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
-    const ArenaGeom* g = &arena_geoms[s->arena_id];
+    const ArenaGeom* g = arena_geoms[s->arena_id];   /* registry is an array of pointers */
 
     /* 1. phase logic */
     q32 wall_x = g->half_x, wall_z = g->half_z;
