@@ -58,15 +58,15 @@ static void pushout_aabb(Vec3q* pos, q32 r, const Aabb* b) {
 }
 
 static void collide_static(Vec3q* pos, Vec3q* vel, q32 radius, const ArenaGeom* g,
-                           q32 wall_extent) {
+                           q32 wall_x, q32 wall_z) {
     /* floor */
     if (pos->y < 0) { pos->y = 0; if (vel->y < 0) vel->y = 0; }
-    /* boundary walls (shrinkable via wall_extent) */
-    q32 lim = wall_extent - radius;
-    if (pos->x < -lim) { pos->x = -lim; if (vel->x < 0) vel->x = 0; }
-    if (pos->x >  lim) { pos->x =  lim; if (vel->x > 0) vel->x = 0; }
-    if (pos->z < -lim) { pos->z = -lim; if (vel->z < 0) vel->z = 0; }
-    if (pos->z >  lim) { pos->z =  lim; if (vel->z > 0) vel->z = 0; }
+    /* boundary walls (rectangular; per-axis, shrinkable in sudden death) */
+    q32 lx = wall_x - radius, lz = wall_z - radius;
+    if (pos->x < -lx) { pos->x = -lx; if (vel->x < 0) vel->x = 0; }
+    if (pos->x >  lx) { pos->x =  lx; if (vel->x > 0) vel->x = 0; }
+    if (pos->z < -lz) { pos->z = -lz; if (vel->z < 0) vel->z = 0; }
+    if (pos->z >  lz) { pos->z =  lz; if (vel->z > 0) vel->z = 0; }
     /* pillars */
     for (int i = 0; i < g->num_pillars; i++)
         pushout_aabb(pos, radius, &g->pillars[i]);
@@ -117,7 +117,7 @@ static void throw_bomb(ArenaState* s, int pi, ArenaBomb* b, uint16_t dir,
 /* --------------------------------------------------------- player tick */
 
 static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g,
-                        q32 wall_extent) {
+                        q32 wall_x, q32 wall_z) {
     ArenaPlayer* p = &s->players[pi];
     if (p->state == PSTATE_DEAD) { p->last_input = in; return; }
 
@@ -249,7 +249,7 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
     p->vel.y -= TUNE_GRAVITY;
     if (p->vel.y < TUNE_TERMINAL_VY) p->vel.y = TUNE_TERMINAL_VY;
     p->pos.x += p->vel.x; p->pos.y += p->vel.y; p->pos.z += p->vel.z;
-    collide_static(&p->pos, &p->vel, TUNE_PLAYER_RADIUS, g, wall_extent);
+    collide_static(&p->pos, &p->vel, TUNE_PLAYER_RADIUS, g, wall_x, wall_z);
 
     /* state upkeep */
     if (p->state == PSTATE_TUMBLE) {
@@ -271,7 +271,7 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
     const ArenaGeom* g = &arena_geoms[s->arena_id];
 
     /* 1. phase logic */
-    q32 wall_extent = g->half_extent;
+    q32 wall_x = g->half_x, wall_z = g->half_z;
     switch (s->phase) {
     case PHASE_COUNTDOWN:
         if (s->phase_timer > 0) s->phase_timer--;
@@ -292,12 +292,14 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
         if (s->phase_timer > 0) s->phase_timer--;
         break;
     }
-    if (s->phase == PHASE_SUDDEN_DEATH)
-        wall_extent -= (q32)s->shrink_step * Q(0.03);
+    if (s->phase == PHASE_SUDDEN_DEATH) {
+        q32 shrink = (q32)s->shrink_step * Q(0.03);
+        wall_x -= shrink; wall_z -= shrink;
+    }
 
     /* 2. players, fixed order */
     for (int i = 0; i < ARENA_MAX_PLAYERS; i++)
-        player_tick(s, i, inputs[i], g, wall_extent);
+        player_tick(s, i, inputs[i], g, wall_x, wall_z);
 
     /* 3. player-vs-player pushout, fixed pair order */
     for (int a = 0; a < ARENA_MAX_PLAYERS; a++) {
@@ -345,7 +347,7 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
             /* walls stop bombs */
             {
                 Vec3q v = b->vel;
-                collide_static(&b->pos, &v, TUNE_BOMB_RADIUS, g, wall_extent);
+                collide_static(&b->pos, &v, TUNE_BOMB_RADIUS, g, wall_x, wall_z);
                 b->vel.x = v.x; b->vel.z = v.z;
             }
             /* floor bounce */
@@ -397,7 +399,7 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
             /* walls / pillars: any pushback = contact = detonate */
             {
                 Vec3q pre_p = b->pos, pre_v = b->vel;
-                collide_static(&b->pos, &b->vel, TUNE_BOMB_RADIUS, g, wall_extent);
+                collide_static(&b->pos, &b->vel, TUNE_BOMB_RADIUS, g, wall_x, wall_z);
                 if (b->pos.x != pre_p.x || b->pos.z != pre_p.z
                     || b->vel.x != pre_v.x || b->vel.z != pre_v.z)
                     b->state = BSTATE_EXPLODING;

@@ -53,7 +53,11 @@ static void run_forward(q32* out_top, int* out_ticks90) {
     ArenaState s; arena_init(&s, 0, 2, 1); s.phase = PHASE_PLAY;
     ArenaInput in[ARENA_MAX_PLAYERS];
     for(int i=0;i<ARENA_MAX_PLAYERS;i++) in[i]=arena_input_pack(0,0,0,0,0);
-    in[0]=arena_input_pack(0,31,0,0,0);           /* full up = -Z */
+    in[0]=arena_input_pack(31,0,0,0,0);           /* full +X: the open direction from
+                                                   * the corner spawn (arena0 is now the
+                                                   * Nitros-matched rectangle; spawn sits
+                                                   * near the -X/-Z corner, so drive +X to
+                                                   * have room to reach top speed) */
     q32 top=0; int t90=-1;
     for(int t=1;t<=240;t++){ arena_tick(&s,in);
         q32 spd=qlen2(s.players[0].vel.x, s.players[0].vel.z);

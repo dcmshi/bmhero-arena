@@ -52,6 +52,23 @@ Full findings + conversion in `docs/bmhero-player-movement-re.md`. A1.3's prior 
 user-confirmed on the OLD (auto-runner) values, so a fresh fork feel-test on these
 authentic numbers is pending.
 
+**Playtest fixes — arena geometry (2026-07-24 late).** The fork feel-test of the
+new movement exposed that the sim arena (arena0: 12×12 ring + 4 pillars) never
+matched the open Nitros render stand-in → invisible walls/pillars (the player was
+pinned at a sim corner ±678 Hero out + blocked at 4 mid-floor boxes; principle
+recorded §8.5a). **FIXED:** arena0 is now a **rectangular** geom matched to the
+measured Nitros floor (~1900×900 Hero @ scale 120 → `half_x`≈7.9, `half_z`≈3.87
+sim, **no pillars**, corner spawns); `collide_static` is per-axis. Intentional
+gameplay change: `TUNE_VERSION` 4 → **5**, CI hash `582455c8` → **`77bae30e`**
+(deterministic `-O0/-O2`; `test_det` + `test_movement` green `-Werror`). The
+Nitros floor was measured with a mode-5 sweep probe (enlarge sim arena, log live
+`gPlayerObject->Pos`). **STILL OPEN from the same playtest (fork-side, next):**
+(a) set bombs place at the right spot but don't **render** — all bomb+blast actors
+collapse into one `gObjects` slot (spawn-then-`ACTION_NONE` lets the game spawner
+reuse it; §8 pool-ceiling caveat on the fix); (b) the set **anim** only twitches
+while moving (the game walker re-asserts locomotion each frame). Fork feel-test of
+the rectangular arena pending.
+
 ## Current status (2026-07-22)
 
 **A1.3 movement dynamics complete — sim-only, no fork changes (2026-07-22

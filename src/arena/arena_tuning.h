@@ -76,8 +76,10 @@
 #define TUNE_ROUNDS_TO_WIN   3
 
 /* Bump when any value changes; folded into the session version hash. */
-#define TUNE_VERSION         4      /* 2026-07-24: real code_extra_0 walker constants applied
-                                     * (turn 4deg, top 18, accel 1.5, air 1.0 from RecompiledFuncs);
-                                     * was 3 (A1.3 auto-runner-sourced) */
+#define TUNE_VERSION         5      /* 2026-07-24: (v4) real code_extra_0 walker constants
+                                     * (turn 4deg, top 18, accel 1.5, air 1.0); (v5) arena0 ->
+                                     * rectangular Nitros-matched geom (half_x/half_z, no pillars,
+                                     * corner spawns) so the sim bounds track the rendered map
+                                     * (integration notes 8.5a). Was 3 (A1.3 auto-runner). */
 
 #endif
