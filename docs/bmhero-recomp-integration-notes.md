@@ -381,12 +381,17 @@ throws `0x17/0x19/0x27/0x28/0x2C/0x30/0x31/0x33/0x35`→{34,36,38,39,42,47…}, 
 `0x1B-0x22`→{43,44,47,48,49}, warp `0x2E`→7, idle 0, locomotion 1-8. (Machine-C derived;
 throw/impact/warp HIGH via called helpers, the rest inferred from clip ordering.)
 
-**Next (Phase 2/3, spec `docs/superpowers/specs/2026-07-24-a1-4-set-kick-animations-design.md`):**
-native read-only exports of the read-back getters + a probe that injects a set press and
-asserts index→29 with the frame counter advancing (the objective gate); then a bridge
-set-edge export (bomb `FREE→SETTLED`, `owner==i`; kick = `SETTLED→SLIDING`, `bounced==i+1`
-— mirrors `arena_blast_new`, no sim change, hash `5f500fcb` held) driving the trigger on
-the sim edge for player 0, guarded to play once per event and return to locomotion.
+**SHIPPED (A1.4, fork `feature/a1.4-set-kick-anims`, 2026-07-24 — spec
+`docs/superpowers/specs/2026-07-24-a1-4-set-kick-animations-design.md`).** Set-bomb pose
+wired end-to-end and harness-verified. A bridge set-edge export (bomb `FREE`->`SETTLED`,
+`owner==i` — mirrors `arena_blast_new`, no sim change, hash `5f500fcb` held) drives
+`func_8001C0EC(0,0,29,1,&D_80115808)` on player 0's sim set edge; per-frame read-back via
+`func_8001B880`/`func_8001B62C` -> `arena_dbg_anim`; probe mode `ARENA_AUTO_BATTLE=4`
+presses Z AFTER the sim's 180-tick countdown (set only fires in `PHASE_PLAY` — the initial
+probe pressed too early and no bomb was placed) and `arena-soak.ps1 -AnimProbe` asserts the
+gate. VERIFIED: idx 29 with the frame counter advancing 0->14 (13 samples), bombs live=2/3,
+**5/5 boot-soak green**. The set anim plays out — the walker does NOT stomp it same-frame.
+Kick keeps locomotion (no game anim). Human feel-boot pending as the final polish confirm.
 
 ### 8.6 The two object pools (don't cross them)
 

@@ -12,6 +12,43 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
   player struct, input, camera, coord mapping) — read before any A1.2+ work
 - `README.md` — this repo's layout, build, and the five invariants
 
+## Current status (2026-07-24)
+
+**A1.4 set-bomb animation complete — fork-side, sim untouched, 5/5 soak green
+(2026-07-24).** Player 0 now plays the game's OWN set/drop-bomb pose when the
+sim registers a set: `func_8001C0EC(0, 0, 29, 1, &D_80115808)` on
+`gPlayerObject` (code_extra_0 anim **29**, bank 1, table `D_80115808` — the exact
+trigger form the fork already proved in `patches/teleporter_obj.c`, anim 7). The
+whole player action-anim map was RE'd **zero-boot from `RecompiledFuncs`** (the
+recomp's machine-C of the un-migrated `code_extra_0` walker — the key unlock;
+corrected an earlier `code_extra_1`/idx-11 misread). **Kick has NO game
+animation** — Bomberman Hero offense is grab→throw; the walk-in kick is 100%
+bomb-side (`69AA0.c` never animates the player), so the puppet keeps locomotion
+during a slide (user chose "no kick pose"; §8.5c). The set **edge** is detected
+natively in the bridge (bomb `FREE→SETTLED`, `owner==i`, mirroring
+`arena_blast_new`) — pure read of sim state, **no gameplay change, pinned hash
+`5f500fcb` holds**. **Auto-verified via the harness** (user requirement, no
+eyeballing): read-back getters `func_8001B880`/`func_8001B62C` →
+`arena_dbg_anim` burst-log; probe mode `ARENA_AUTO_BATTLE=4` presses Z after the
+sim's 180-tick countdown (set only fires in `PHASE_PLAY`); `arena-soak.ps1
+-AnimProbe` asserts `[anim] idx=29` with the frame counter advancing. Gate PASS
+(idx 29, frame 0→14; bombs live=2/3), **5/5 boot-soak green**; the pose plays out
+(walker doesn't stomp it). Fork branch `feature/a1.4-set-kick-anims` (pushed).
+Human feel-boot pending as the final polish confirm. Next: A1.2g arena hardening
+(exit trigger, damage tiles) + HUD.
+
+**A1.3 GAP recovery — standard walker constants recovered, DOCUMENTED not applied
+(2026-07-24).** The A1.3 turn rate (the one "unrecoverable" GAP, guessed
+≈12°/frame) and the horizontal speed model were pulled from `RecompiledFuncs`
+(same source as A1.4): the real standard walker (`code_extra_0`) turns at **4.0°
+/frame** (bounded), top speed **18** / accel **1.5** flat-ground (vs the
+auto-runner-sourced 10 / 0.2 A1.3 shipped), air accel 1.0, mag tiers 0/6/12/18.
+Written to `docs/bmhero-player-movement-re.md` (UPDATE block + uncertainty table).
+**Not applied to `arena_tuning.h`** — A1.3's shipped values were user-confirmed
+good in the fork, and adopting these is a separate intentional sim change (bump
+`TUNE_VERSION`, re-derive the scale anchor, re-pin the CI hash, re-feel) to make
+on a decision.
+
 ## Current status (2026-07-22)
 
 **A1.3 movement dynamics complete — sim-only, no fork changes (2026-07-22
