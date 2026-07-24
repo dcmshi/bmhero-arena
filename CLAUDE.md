@@ -37,17 +37,20 @@ sim's 180-tick countdown (set only fires in `PHASE_PLAY`); `arena-soak.ps1
 Human feel-boot pending as the final polish confirm. Next: A1.2g arena hardening
 (exit trigger, damage tiles) + HUD.
 
-**A1.3 GAP recovery — standard walker constants recovered, DOCUMENTED not applied
-(2026-07-24).** The A1.3 turn rate (the one "unrecoverable" GAP, guessed
-≈12°/frame) and the horizontal speed model were pulled from `RecompiledFuncs`
-(same source as A1.4): the real standard walker (`code_extra_0`) turns at **4.0°
-/frame** (bounded), top speed **18** / accel **1.5** flat-ground (vs the
-auto-runner-sourced 10 / 0.2 A1.3 shipped), air accel 1.0, mag tiers 0/6/12/18.
-Written to `docs/bmhero-player-movement-re.md` (UPDATE block + uncertainty table).
-**Not applied to `arena_tuning.h`** — A1.3's shipped values were user-confirmed
-good in the fork, and adopting these is a separate intentional sim change (bump
-`TUNE_VERSION`, re-derive the scale anchor, re-pin the CI hash, re-feel) to make
-on a decision.
+**A1.3 GAP recovery — standard walker constants recovered AND APPLIED (2026-07-24;
+`TUNE_VERSION` 3 -> 4, CI hash `5f500fcb` -> `582455c8`).** The A1.3 turn rate (the
+one "unrecoverable" GAP, guessed ~12deg/frame) and the horizontal speed model were
+pulled from `RecompiledFuncs` (same source as A1.4): the real standard walker
+(`code_extra_0`) turns at **4.0deg/frame** (bounded), top speed **18** / accel **1.5**
+flat-ground (vs the auto-runner-sourced 10 / 0.2 A1.3 shipped), air accel 1.0. Applied
+to `arena_tuning.h` under the existing height-anchor scale S=1/119 (self-consistent with
+the shipped jump/gravity): turn `0x02D8`, run-speed `Q(0.151)`, accel/friction
+`Q(0.0126)`, air `Q(0.0084)`. Stick->target keeps continuous mag-scaling (approximates
+the game's discrete 0/6/12/18 tiers). Verified: `test_determinism` + `test_movement`
+green under `-Wextra -Werror`; new hash `582455c8` deterministic across `-O0/-O2/-O3`.
+Full findings + conversion in `docs/bmhero-player-movement-re.md`. A1.3's prior feel was
+user-confirmed on the OLD (auto-runner) values, so a fresh fork feel-test on these
+authentic numbers is pending.
 
 ## Current status (2026-07-22)
 

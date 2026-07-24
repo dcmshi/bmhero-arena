@@ -59,12 +59,19 @@ no longer self-consistent — re-derive the spatial scale (or accept a different
 value) if applying. The **anchor-independent ratios** (accel/top, frames-to-top, turn
 deg/frame) are the robust part.
 
-**STATUS — documentation only (not applied).** A1.3 SHIPPED the auto-runner-derived values
-(`TUNE_VERSION` 3, CI hash `5f500fcb`) and the movement was **user-confirmed good** in the
-fork feel-test (2026-07-23). Adopting these recovered authentic numbers is a **separate,
-intentional sim change** (bump `TUNE_VERSION`, re-derive constants incl. the scale anchor,
-re-pin the CI hash, re-test + re-feel) — deliberately **not done in this pass**. This block
-records the findings so that change can be made on a decision.
+**STATUS — APPLIED 2026-07-24 (`TUNE_VERSION` 3 -> 4, CI hash `5f500fcb` -> `582455c8`).**
+The recovered walker constants are now shipped in `arena_tuning.h`: `TUNE_TURN_RATE`
+0x0889 -> 0x02D8 (4.0 deg/frame), `TUNE_RUN_SPEED` Q(0.084) -> Q(0.151) (top 18 x S),
+`TUNE_RUN_ACCEL`/`TUNE_RUN_FRICTION` Q(0.00168) -> Q(0.0126) (1.5 x S), `TUNE_AIR_CONTROL`
+Q(0.00168) -> Q(0.0084) (1.0 x S). Kept the existing **height-anchor scale** S = 1/119
+(the same scale the shipped jump/gravity/terminal already use, so the conversion is
+self-consistent — the "circular anchor" caveat only bit the old top=10 choice). The
+stick->target-speed mapping stays **continuous mag-scaling** (the sanctioned approximation
+of the game's discrete 0/6/12/18 tiers); the ~10% deadzone is unchanged (game ~12.5%).
+Verified: `test_determinism` + `test_movement` green under `-Wextra -Werror`; new hash
+`582455c8` deterministic across `-O0/-O2/-O3`. A1.3's prior feel was user-confirmed good on
+the OLD (auto-runner) values, so a fresh fork feel-test on these authentic values is
+pending. Remaining empirical option if the feel wants it: replicate the discrete tiers.
 
 ---
 

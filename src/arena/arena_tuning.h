@@ -12,20 +12,27 @@
 /* Units: 1.0q ~= 1 world unit; ticks are 1/60s. */
 
 /* -- movement -- A1.3: transcribed from docs/bmhero-player-movement-re.md
- * ## Speed (60 Hz => Hz factor 1.0; height anchor S=0.0084034; q = game_u/frame x S). */
-#define TUNE_RUN_SPEED       Q(0.084)   /* game top 10 u/f x S */
-#define TUNE_RUN_ACCEL       Q(0.00168) /* game 0.2 u/f x S — ~7x lower than the old placeholder = the momentum feel */
-#define TUNE_RUN_FRICTION    Q(0.00168) /* game friction == accel (single 0.2 u/f rate) */
+ * ## Speed (60 Hz => Hz factor 1.0; height anchor S=0.0084034; q = game_u/frame x S).
+ * 2026-07-24: horizontal constants RE-DERIVED from the REAL standard walker
+ * (code_extra_0, recovered from RecompiledFuncs — movement-re.md UPDATE block).
+ * A1.3 shipped the auto-runner's numbers (10 / 0.2); the real walker is
+ * snappier: top 18, accel 1.5 (~12 frames to top vs ~50), air accel 1.0.
+ * Stick->target-speed stays continuous mag-scaling (the doc's sanctioned
+ * approximation of the game's discrete 0/6/12/18 tiers). */
+#define TUNE_RUN_SPEED       Q(0.151)   /* game top 18 u/f x S (real walker; was auto-runner 10 -> Q(0.084)) */
+#define TUNE_RUN_ACCEL       Q(0.0126)  /* game 1.5 u/f x S (real walker; was 0.2 -> Q(0.00168)) */
+#define TUNE_RUN_FRICTION    Q(0.0126)  /* game friction == accel (single 1.5 u/f rate) */
 #define TUNE_JUMP_IMPULSE    Q(0.280)    /* game 33.333 u/f x S (was Q(0.140)) */
 #define TUNE_GRAVITY         Q(0.0175)   /* game 2.0833 u/f^2 x S (was Q(0.0075)) */
 #define TUNE_TERMINAL_VY     Q(-0.403)   /* game -48 u/f x S (NEW — sim had no clamp) */
-#define TUNE_AIR_CONTROL     Q(0.00168)  /* = TUNE_RUN_ACCEL: full air control per RE (low-confidence/empirical) */
+#define TUNE_AIR_CONTROL     Q(0.0084)   /* game air accel 1.0 u/f x S = 67% of ground (real walker; was Q(0.00168)) */
 #define TUNE_PLAYER_RADIUS   Q(0.35)
 #define TUNE_PLAYER_HEIGHT   Q(1.0)
-#define TUNE_TURN_RATE       0x0889     /* binary-angle units/tick (~12deg/frame). EMPIRICAL seed:
-                                         * campaign turn rate is undecompiled asm (movement-re.md
-                                         * ## Turn). Finalized by feel; structure is transcribed,
-                                         * rate is not. */
+#define TUNE_TURN_RATE       0x02D8     /* 728 = 4.0deg/frame, bounded. RECOVERED from the real
+                                         * standard walker (code_extra_0 func_80281E50, step
+                                         * 0x40800000; RecompiledFuncs, movement-re.md ## Turn +
+                                         * UPDATE). Was 0x0889 (~12deg) empirical seed — the real
+                                         * rate is 3x slower (more turn momentum). */
 
 /* -- bombs -- TODO(feel): calibrate against decomp bmhero src/code/69AA0.c
  * during A1. Verified there: throw is a FIXED launch (pitch 80deg, speed 35,
@@ -69,6 +76,8 @@
 #define TUNE_ROUNDS_TO_WIN   3
 
 /* Bump when any value changes; folded into the session version hash. */
-#define TUNE_VERSION         3      /* A1.3: movement dynamics transcribed (was 2) */
+#define TUNE_VERSION         4      /* 2026-07-24: real code_extra_0 walker constants applied
+                                     * (turn 4deg, top 18, accel 1.5, air 1.0 from RecompiledFuncs);
+                                     * was 3 (A1.3 auto-runner-sourced) */
 
 #endif
