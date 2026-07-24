@@ -21,7 +21,10 @@
  * approximation of the game's discrete 0/6/12/18 tiers). */
 #define TUNE_RUN_SPEED       Q(0.151)   /* game top 18 u/f x S (real walker; was auto-runner 10 -> Q(0.084)) */
 #define TUNE_RUN_ACCEL       Q(0.0126)  /* game 1.5 u/f x S (real walker; was 0.2 -> Q(0.00168)) */
-#define TUNE_RUN_FRICTION    Q(0.0126)  /* game friction == accel (single 1.5 u/f rate) */
+#define TUNE_RUN_FRICTION    Q(0.030)   /* A1.4 feel: DECOUPLED from accel (~2.4x) to cut the
+                                         * "slidey" coast on stick-release (was Q(0.0126)=accel,
+                                         * the authentic single-rate -> ~0.2s coast; now ~0.08s).
+                                         * Momentum ramp-up (accel) kept; stop is snappier. FEEL knob. */
 #define TUNE_JUMP_IMPULSE    Q(0.280)    /* game 33.333 u/f x S (was Q(0.140)) */
 #define TUNE_GRAVITY         Q(0.0175)   /* game 2.0833 u/f^2 x S (was Q(0.0075)) */
 #define TUNE_TERMINAL_VY     Q(-0.403)   /* game -48 u/f x S (NEW — sim had no clamp) */
@@ -76,8 +79,9 @@
 #define TUNE_ROUNDS_TO_WIN   3
 
 /* Bump when any value changes; folded into the session version hash. */
-#define TUNE_VERSION         5      /* 2026-07-24: (v4) real code_extra_0 walker constants
-                                     * (turn 4deg, top 18, accel 1.5, air 1.0); (v5) arena0 ->
+#define TUNE_VERSION         6      /* 2026-07-24: (v6) TUNE_RUN_FRICTION decoupled to Q(0.030)
+                                     * (cut the slidey coast on release); (v4) real code_extra_0
+                                     * walker constants (turn 4deg, top 18, accel 1.5, air 1.0); (v5) arena0 ->
                                      * rectangular Nitros-matched geom (half_x/half_z, no pillars,
                                      * corner spawns) so the sim bounds track the rendered map
                                      * (integration notes 8.5a). Was 3 (A1.3 auto-runner). */
