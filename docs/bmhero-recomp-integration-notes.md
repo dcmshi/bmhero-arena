@@ -236,6 +236,25 @@ CRASH, not be no-ops.
 - Confirmed on screen: player + 3 bomb actors at the sim corners, holding
   position as the player moves (no mirror), `simpos` advancing.
 
+### 8.5a PRINCIPLE — the sim's collision geometry MUST match the rendered map (2026-07-24)
+
+When the sim is puppeted onto a **real game map** (the Nitros room stand-in), the
+sim's arena geometry (`arena_geom.h`: `half_extent`, `pillars`) **and** the render
+scale (`g_scale`) together decide where the player is ALLOWED to move — and that
+must line up with the actual walkable floor of whatever map `ARENA_WARP_MAP` points
+at, or the player hits **invisible walls / stops mid-floor**. Feel-test 2026-07-24
+exposed this: the sim's designed arena0 (a 12×12 ring + 4 central pillars) imposed,
+on the open Nitros floor, a boundary that pinned the player at a sim corner (±5.65
+sim = ±678 Hero units — confirmed in `[simpos]`) plus 4 invisible mid-arena
+collision boxes; nothing was visible at any of those stop points. Two ways to keep
+them in sync: **(a)** size/shape the sim arena to the rendered map's real collidable
+bounds (measure them — drive the player to the map's own walls with the sim clamp
+relaxed and read the extent from the live `gPlayerObject->Pos`), or **(b)** render a
+map whose geometry matches the sim's designed arena. Until the real battle arena is
+built + rendered, the sim geometry is a **stand-in that must track the warp map** —
+changing `ARENA_WARP_MAP` means re-matching the sim geom. (Related: §8.5's pits
+crash was the same class of sim/render geometry mismatch.)
+
 ### 8.5b Real bomber mesh — A1.2d verdict: mesh resident, ANIMS are not (2026-07-22)
 
 **The slice closed at its decision gate.** The bomber MESH loads and the whole
