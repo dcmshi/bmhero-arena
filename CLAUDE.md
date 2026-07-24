@@ -14,6 +14,63 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
 
 ## Current status (2026-07-24)
 
+**SESSION WRAP-UP (2026-07-24, late) — A1.4 + the A1.3/movement feel pass shipped;
+user feel-tested "better", remaining items are polish or Nitros-stand-in
+artifacts.** Full detail in the dated paragraphs below, integration notes
+8.5a/8.5b/8.5c/8.13, and docs/bmhero-player-movement-re.md. All pushed: canonical
+`main` @ hash `18fbf1bb` / `TUNE_VERSION` 6 (CI green); fork
+`feature/a1.4-set-kick-anims` @ `00be604`.
+
+DONE this session:
+- **A1.4 set-bomb animation** - player 0 plays the game's own set/drop pose
+  (`func_8001C0EC(0,0,29,1,&D_80115808)`, code_extra_0 anim 29) on the sim set
+  edge. RE'd zero-boot from `RecompiledFuncs` (the machine-C of the un-migrated
+  overlays - the key methodology unlock this session; §8.5c). **Kick has NO game
+  anim** (offense is grab/throw; walk-in kick is bomb-side only) -> locomotion
+  kept. The set pose is fragile WHILE MOVING (the game walker re-asserts
+  locomotion each frame) - holds when standing; hold-while-moving is **DEFERRED**
+  (fights the walker; the bomb visibly appears so the set is functional).
+- **Bomb rendering fixed** (§8.13) - set bombs were placed but invisible: every
+  bomb+blast actor was spawn-then-ACTION_NONE'd, so func_80027464 REUSED the slot
+  and all piled into one gObjects slot which the blast loop then hid. Un-piled
+  into distinct slots + dropped the fallback blast actors (freed pool budget) +
+  BOMB_POOL 6->4 to stay under the ~8-actor model-pool ceiling. Screenshot-
+  confirmed a bomb draws.
+- **A1.3 walker constants applied** (turn 4deg/frame, top 18, accel 1.5, air 1.0)
+  recovered from `RecompiledFuncs`; **friction decoupled** to Q(0.030) (v6) for a
+  snappier stop (feel-tested "better", less slide).
+- **Rectangular arena** matched to the measured Nitros floor + **map registry**
+  (arena_geom.h: `arena_nitros_standin`[0] used, `arena_classic`[1] deferred).
+  Principle recorded: the sim's collidable bounds MUST track the rendered map
+  (§8.5a).
+- **Absolute-drive player 0** (§8.13) - replaced the A1.2a delta drive that
+  double-drove the player (game walker + sim delta) and jammed the sim against
+  its walls -> mid-floor slowdowns. Sim now solely owns X/Z (like the puppets),
+  origin captured early (~30-frame draw-gate, not the drifting 90-frame gate).
+- **CI green** - the netcode bomb test was recalibrated to be geometry/movement-
+  independent (explicit setups).
+
+KNOWN / stand-in artifacts (Nitros is a RENDER stand-in, not the real arena):
+- **Camera drift** - the Nitros rail camera swings; input is camera-relative
+  (game rotates the stick by camera yaw, §8.11) so movement curves as it orbits.
+- **Foreshortening** - W/S (toward/away from camera) reads slower than A/D
+  (perspective). Both go away with a real fixed arena camera.
+- Puppets (players 1-3) are red bomb-mesh placeholders (real bomber mesh deferred,
+  §8.5b).
+
+NEXT STEPS (rough order):
+1. **A1.2g arena hardening** - exit trigger + damage tiles (probe found them live
+   in the Nitros room; the bypassed death path crashes) + **HUD**.
+2. **Explosion visual** - reuse a bomb's own actor as its blast on detonation
+   (stays under the ~8 model-pool ceiling that forced dropping the blast actors).
+3. **Set-pose hold-while-moving** - revisit with a cleaner approach (engage the
+   game's set state, or frame save/restore) if wanted.
+4. **Real battle arena** - build/render a map matching the sim's designed arena;
+   then `arena_classic` geom + a fixed camera resolve the drift/foreshortening/
+   pillars together.
+5. **Feel knobs still open** - turn rate (4deg authentic; could speed up for
+   arena), friction (Q(0.030) first cut), the 60-vs-30 Hz question.
+
 **A1.4 set-bomb animation complete — fork-side, sim untouched, 5/5 soak green
 (2026-07-24).** Player 0 now plays the game's OWN set/drop-bomb pose when the
 sim registers a set: `func_8001C0EC(0, 0, 29, 1, &D_80115808)` on

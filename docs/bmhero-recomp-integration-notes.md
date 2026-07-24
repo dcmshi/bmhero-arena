@@ -596,3 +596,64 @@ Kick keeps locomotion (no game anim). Human feel-boot pending as the final polis
   green soak ON THAT EXACT BUILD (`-N 10`, exit 0). Human boots are for feel,
   facing, and animation judgments only — everything else goes through the
   harness first.
+
+### 8.13 Render-drive = ABSOLUTE (not delta); bomb-render un-pile; camera (A1.4, 2026-07-24)
+
+**Render-drive: player 0 is driven by the sim's ABSOLUTE mapped position, NOT a
+per-frame delta.** A1.2a drove player 0 by adding the sim's per-frame displacement
+to the live Pos (`Pos += dx/dz`). The A1.4 movement feel-test exposed that this
+DOUBLE-drives the player: the game's own walker (`func_80024744`, run just before)
+ALSO moves the player from the same stick, and our delta layers on top. The two
+position integrators drift apart, and when the SIM player jams against its (small)
+arena wall (dx/dz -> 0) the GAME player keeps coasting -> intermittent mid-floor
+slowdowns / "running into something". Per-frame `[mv]` trace (sim pos vs rendered
+dx vs yaw vs speed) nailed it: `simx` pinned at the wall with `spd=0.15` but
+`dx=0`. FIX: drive player 0 by the sim's ABSOLUTE mapped position, exactly like the
+3 puppets (`arena_puppet_wx/wz(0)` = frozen origin + (sim_pos - sim_ref)*scale) -
+the sim solely owns X/Z, no co-drive. Y is still left to the game (grounding);
+the camera still follows Pos. **Capture the origin/ref EARLY** (once, after the
+~30-frame draw-gate) - the old 90-frame spawn-gate capture froze the origin AFTER
+the player had already drifted ~1400 Hero units (origin swung -930 vs +437 between
+sessions). Spawn-once latch for the actor pool is decoupled from the origin latch
+(`spawn_gate() && puppet_get_slot(1) < 0`). Result: pervasive jamming gone
+(user-confirmed); residual = camera drift + foreshortening (below), both
+stand-in artifacts.
+
+**Bomb-render un-pile (set bombs were invisible).** Symptom: set bombs placed in
+the sim (`[setdbg]` confirmed) but nothing on screen. Root cause (per-frame
+`[setdbg]` slot log): every bomb AND blast actor was spawned then immediately set
+`ACTION_NONE` to "start hidden" - but `func_80027464` scans for `ACTION_NONE`
+slots, so each hidden actor was REUSED by the next spawn -> all ~10 collapsed into
+ONE gObjects slot (slot 17); the blast render loop then set that shared slot
+`ACTION_NONE` whenever no blast was live, hiding the bomb the bomb-loop had just
+shown. FIX: (1) DROP the A1.2c fallback blast actors (they caused the hiding + ate
+model-pool budget; explosion visual deferred - revisit by reusing a bomb's OWN
+actor as its blast on detonation to stay under the ceiling); (2) spawn the bomb
+pool WITHOUT `ACTION_NONE` so each takes a DISTINCT slot (the per-frame loop hides
+inactive ones the same frame -> no flicker); (3) `BOMB_POOL` 6 -> 4 so 3 puppets +
+4 bombs = 7 actors stay under the **~8-actor model-pool ceiling** (§8: the
+suppressed Nitros boss holds slots that `ACTION_NONE` doesn't free; the old
+pile-up masked this by using only ~4 distinct slots). Verified: distinct slots
+17/18/19, 32s run with bombs set+detonating = 0 crash dumps, bomb draws
+(screenshot). A 5th/6th simultaneous live bomb won't render until the boss slots
+are actually freed.
+
+**Verification tooling added this slice:** per-frame `[mv]` movement log (sim pos
++ rendered delta + yaw + speed); probe modes `ARENA_AUTO_BATTLE=4` (set-anim: run +
+timed Z press) and `=5` (arena-measure: 4-direction sweep for the floor bounds);
+`[setdbg]` set-bomb slot log; and a **dump-tracked crash-check** (launch, dwell N
+seconds, assert process alive + 0 new WER dumps) - the plain dwell-soak reports
+PASS on `[capture]` BEFORE a dwell-crash, so it can mask crashes that happen during
+the probe window; the crash-check catches those.
+
+**Camera (both are Nitros RENDER-STAND-IN artifacts, not sim bugs):**
+- **Drift** - the Nitros boss room has a rail camera that swings on its own; input
+  is camera-relative (the game rotates the stick by `gView.rot.y`, §8.11), so a
+  held direction curves as the camera orbits. With absolute drive the POSITION
+  can't drift (render == sim), so any drift is visual/camera.
+- **Foreshortening** - moving toward/away from the camera (W/S) covers less screen
+  distance per world-unit than side-to-side (A/D) under perspective, so W/S reads
+  slower (the A1.2a "compression" note). Isotropic in world space; a perspective
+  artifact.
+- Both resolve with a real FIXED arena camera (a future item, alongside rendering
+  the real walled arena so `arena_classic` geom can be used - §8.5a).
