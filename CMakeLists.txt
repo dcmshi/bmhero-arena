@@ -32,6 +32,21 @@ if(NOT MSVC)
 endif()
 add_test(NAME bomb_mechanics COMMAND test_bomb_mechanics)
 
+# Feel-metrics probes. tune_probes.c is compiled INTO the test target rather
+# than linked from arena_sim: it is tools-side code that uses floats, and
+# arena_sim carries -Wconversion + the no-floats invariant.
+add_executable(test_tune_report tests/test_tune_report.c tools/tune_probes.c)
+target_link_libraries(test_tune_report arena_sim)
+add_test(NAME tune_report COMMAND test_tune_report)
+
+# The tuning report itself (dev tool, not a test): one tune in, one table out.
+add_executable(tune_report tools/tune_report.c tools/tune_probes.c)
+target_link_libraries(tune_report arena_sim)
+
+# The scripted-match hash generator, pinned by tools/pinned_hash.txt.
+add_executable(arena_hash tools/arena_hash.c)
+target_link_libraries(arena_hash arena_sim)
+
 # --- netplay: GekkoNet (BSD-2, C API, C++ internals) via FetchContent ---
 include(FetchContent)
 FetchContent_Declare(gekkonet
