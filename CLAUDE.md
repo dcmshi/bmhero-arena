@@ -14,8 +14,34 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
 
 ## Current status (2026-07-26)
 
+**TURN RATE TUNED — `TUNE_VERSION` 6 → 7, hash `18fbf1bb` → `07fc6ade`
+(2026-07-26).** `TUNE_TURN_RATE` `0x02D8` (4.0°/frame, the authentic
+`code_extra_0` walker) → **`0x0444` (6.0°/frame)**. First tune chosen from
+**measured numbers rather than a feel-boot**: at 4° a 180 at top speed sweeps a
+**2.06u radius against an arena whose short half-width is 3.87u — 53% of it**,
+so you could not turn around mid-field without eating a wall. 6° cuts that to
+1.35u (35%) and a 180 to 30 ticks (0.50s), keeping the turn visibly gradual
+(A1.3's whole point). Metrics delta: `turn180_ticks 45→30`, `turn90_ticks
+23→15`, `turn_radius 2.063→1.349`; nothing else moved. Deterministic at
+`-O0/-O2/-O3`; full gate green; **9/9 ctest**.
+**Guarded by new arena-fit tests** in `tests/test_tune_report.c` — turn radius
+must stay under half the arena's short half-width, and a 180 must land in the
+10–40 tick band (gradual, but dodgeable). These **fail at 4°/frame**, so the
+decision is encoded in tests rather than a comment. *Fork feel-boot on the new
+rate is pending; the fork submodule still points at the v6 sim.*
+
+**CI now runs every unit test.** Gaps closed: `test_movement` was **not in
+CMakeLists at all** (so `ctest` silently skipped it), and `test_bomb_mechanics`
+ran only under netcode's 2 OSes, never the 6-leg cross-arch matrix. Both fixed.
+Also fixed two **pre-existing** breakages this surfaced: `tools/viewer/
+viewer_draw.c` never got updated when arena 0 went rectangular in v5 (still
+referenced `half_extent` and mis-indexed the geom registry — invisible to CI
+because runners have no SDL3, so the viewer target is skipped), and
+`tests/run_p2p_test.sh` used a `mktemp -d` that MSYS2 bash can create but not
+write into, making local `ctest` permanently red.
+
 **Tuning-loop toolkit shipped — the build/verify loop is now scripted end to end
-(2026-07-26).** Sim untouched: hash still `18fbf1bb`, `TUNE_VERSION` still 6.
+(2026-07-26).**
 Spec `docs/superpowers/specs/2026-07-26-tuning-loop-toolkit-design.md`, plan
 `docs/superpowers/plans/2026-07-26-tuning-loop-toolkit.md`. Canonical branch
 `feature/tuning-loop-toolkit`; fork branch `feature/build-and-soak-tooling`.

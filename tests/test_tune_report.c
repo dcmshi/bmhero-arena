@@ -10,6 +10,7 @@
 #include "../tools/tune_probes.h"
 #include "../src/arena/arena_tuning.h"
 #include "../src/arena/arena_math.h"
+#include "../src/arena/arena_geom.h"
 
 static int failures = 0;
 #define CHECK(c, ...) do { if(!(c)){ failures++; printf("FAIL: " __VA_ARGS__); printf("\n"); } } while(0)
@@ -68,6 +69,33 @@ int main(void) {
     /* traverse: crossing 2*half_x at top speed, plus the ramp-up */
     CHECK(m.traverse_ticks > 0, "traverse_ticks must be positive");
     CHECK(!m.traverse_capped, "traverse probe hit its cap - player never crossed");
+
+    /* ---- arena-fit guards on the turn rate (2026-07-26 tune) --------------
+     * These are GAMEPLAY assertions, not model-consistency ones: they tie the
+     * turn tuning to the map the sim actually collides with, so a future map
+     * or turn change that makes the arena unturnable fails here instead of in
+     * a playtest. They are why TUNE_TURN_RATE moved 4deg -> 6deg/frame. */
+    const ArenaGeom* g = arena_geoms[0];
+    double half_z = q_to_f(g->half_z);
+
+    /* A 180 at top speed sweeps `turn_radius` laterally. If that approaches the
+     * arena's SHORT half-width the player cannot turn around mid-arena without
+     * eating a wall. Half of half_z leaves real clearance on both sides.
+     * At the authentic 4deg/frame this is 2.06u vs a 1.94u budget -> FAILS. */
+    CHECK(m.turn_radius < half_z * 0.5,
+          "turn radius %.3fu must stay under half the arena's short half-width "
+          "(%.3fu, half_z=%.3f) or the arena is unturnable mid-field",
+          m.turn_radius, half_z * 0.5, half_z);
+
+    /* Responsiveness band. Lower bound keeps the turn GRADUAL - the whole point
+     * of A1.3's bounded turn is visible momentum, not an instant snap. Upper
+     * bound keeps a 4-player bomb arena dodgeable. */
+    CHECK(m.turn180_ticks > 10,
+          "180 turn in %d ticks is effectively a snap - A1.3's bounded turn "
+          "exists to preserve momentum", m.turn180_ticks);
+    CHECK(m.turn180_ticks < 40,
+          "180 turn takes %d ticks (%.2fs) - too sluggish to dodge in a 4-player "
+          "arena", m.turn180_ticks, m.turn180_ticks / 60.0);
 
     if (!failures) { printf("ALL TUNE REPORT TESTS PASSED\n"); return 0; }
     printf("%d FAILURE(S)\n", failures); return 1;

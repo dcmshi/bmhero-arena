@@ -28,6 +28,14 @@ jobs:
           ${{ matrix.cc }} -std=c11 -Wall -Wextra -Werror ${{ matrix.opt }} \
             -o test_mv src/arena/arena_sim.c tests/test_movement.c
           ./test_mv
+      # Bomb mechanics is sim logic, so it belongs on the cross-arch matrix too -
+      # it previously ran only under ctest in netcode.yml (2 OSes, no ARM/macOS).
+      - name: bomb mechanics tests
+        shell: bash
+        run: |
+          ${{ matrix.cc }} -std=c11 -Wall -Wextra -Werror ${{ matrix.opt }} \
+            -o test_bmb src/arena/arena_sim.c tests/test_bomb_mechanics.c
+          ./test_bmb
       - name: feel-metrics probe tests
         shell: bash
         run: |

@@ -55,11 +55,20 @@
 #define TUNE_PLAYER_HEIGHT   Q(1.0)
 #endif
 #ifndef TUNE_TURN_RATE
-#define TUNE_TURN_RATE       0x02D8     /* 728 = 4.0deg/frame, bounded. RECOVERED from the real
-                                         * standard walker (code_extra_0 func_80281E50, step
-                                         * 0x40800000; RecompiledFuncs, movement-re.md ## Turn +
-                                         * UPDATE). Was 0x0889 (~12deg) empirical seed — the real
-                                         * rate is 3x slower (more turn momentum). */
+#define TUNE_TURN_RATE       0x0444     /* 1092 = 6.0deg/frame, bounded. ARENA TUNE (v7,
+                                         * 2026-07-26): deliberately FASTER than the authentic
+                                         * standard walker's 4.0deg (0x02D8, code_extra_0
+                                         * func_80281E50 step 0x40800000; movement-re.md ## Turn).
+                                         * Why: at 4deg a 180 at top speed sweeps a 2.06u radius
+                                         * against an arena whose SHORT half-width is 3.87u — 53%
+                                         * of it — so you cannot turn around mid-field without
+                                         * eating a wall. 6deg cuts that to 1.35u (35%) and a 180
+                                         * to 30 ticks (0.50s) while keeping the turn visibly
+                                         * gradual (A1.3's whole point). Measured with
+                                         * tools/tune-report.ps1; guarded by the arena-fit asserts
+                                         * in tests/test_tune_report.c. The campaign walker's 4deg
+                                         * stays the authentic reference — this is an arena
+                                         * gameplay choice, not a correction. FEEL knob. */
 #endif
 
 /* -- bombs -- TODO(feel): calibrate against decomp bmhero src/code/69AA0.c
@@ -153,7 +162,13 @@
 
 /* Bump when any value changes; folded into the session version hash. */
 #ifndef TUNE_VERSION
-#define TUNE_VERSION         6      /* 2026-07-24: (v6) TUNE_RUN_FRICTION decoupled to Q(0.030)
+#define TUNE_VERSION         7      /* 2026-07-26: (v7) TUNE_TURN_RATE 4deg -> 6deg/frame
+                                     * (0x02D8 -> 0x0444) — arena-fit tune: at 4deg a 180 at top
+                                     * speed sweeps 53% of the arena's short half-width, so
+                                     * mid-field turns ate a wall. Chosen from a measured sweep
+                                     * (tools/tune-report.ps1), guarded by the arena-fit asserts
+                                     * in tests/test_tune_report.c.
+                                     * 2026-07-24: (v6) TUNE_RUN_FRICTION decoupled to Q(0.030)
                                      * (cut the slidey coast on release); (v4) real code_extra_0
                                      * walker constants (turn 4deg, top 18, accel 1.5, air 1.0); (v5) arena0 ->
                                      * rectangular Nitros-matched geom (half_x/half_z, no pillars,

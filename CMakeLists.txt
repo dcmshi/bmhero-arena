@@ -25,6 +25,15 @@ if(NOT MSVC)
 endif()
 add_test(NAME determinism COMMAND test_determinism)
 
+# Movement model tests. These previously ran ONLY in determinism.yml and were
+# absent from ctest entirely - so a local `ctest` run silently skipped them.
+add_executable(test_movement tests/test_movement.c)
+target_link_libraries(test_movement arena_sim)
+if(NOT MSVC)
+  target_compile_options(test_movement PRIVATE -Wconversion -Wno-sign-conversion)
+endif()
+add_test(NAME movement COMMAND test_movement)
+
 add_executable(test_bomb_mechanics tests/test_bomb_mechanics.c)
 target_link_libraries(test_bomb_mechanics arena_sim)
 if(NOT MSVC)

@@ -4,7 +4,21 @@
 set -u
 BIN="$1"
 TICKS=600
-DIR="$(mktemp -d)"
+
+# Scratch dir for the two processes' output. `mktemp -d` alone is not enough:
+# under MSYS2 bash it can hand back a path it cannot then write into (its /tmp
+# maps to C:/msys64/tmp and the create/write disagree), which failed this test
+# for environment reasons that have nothing to do with the netcode. So pick the
+# first candidate we can actually write a file into, falling back to a dir
+# beside the test binary — always writable, since we just built there.
+DIR=""
+for cand in "$(mktemp -d 2>/dev/null || true)" \
+            "${TMPDIR:-}/p2p_$$" "$(dirname "$BIN")/p2p_scratch_$$"; do
+    [ -n "$cand" ] || continue
+    mkdir -p "$cand" 2>/dev/null || continue
+    if : > "$cand/.wtest" 2>/dev/null; then rm -f "$cand/.wtest"; DIR="$cand"; break; fi
+done
+[ -n "$DIR" ] || { echo "netplay_p2p: no writable scratch dir"; exit 1; }
 trap 'rm -rf "$DIR"' EXIT
 
 "$BIN" --port 7101 --peer 127.0.0.1:7102 --player 0 --ticks $TICKS > "$DIR/a.txt" 2>&1 &
