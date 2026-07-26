@@ -158,11 +158,16 @@ static void add_entities(const ViewerCam* cam, const ArenaState* s, int w, int h
 
 void draw_scene(SDL_Renderer* r, const ViewerCam* cam, const ArenaState* s,
                 int w, int h, int show_grid) {
-    const ArenaGeom* g = &arena_geoms[s->arena_id];
-    float full = QF(g->half_extent);
-    float ext  = full;
-    if (s->phase == PHASE_SUDDEN_DEATH)
-        ext -= (float)s->shrink_step * 0.03f;   /* mirrors sim wall shrink */
+    /* arena_geoms is an array OF POINTERS (a registry), so index it directly.
+     * Extents are per-axis since v5 (2026-07-24) made arena 0 rectangular to
+     * match the rendered map — this viewer assumed a square `half_extent`. */
+    const ArenaGeom* g = arena_geoms[s->arena_id];
+    float full_x = QF(g->half_x), full_z = QF(g->half_z);
+    float ext_x  = full_x,        ext_z  = full_z;
+    if (s->phase == PHASE_SUDDEN_DEATH) {       /* mirrors sim wall shrink */
+        ext_x -= (float)s->shrink_step * 0.03f;
+        ext_z -= (float)s->shrink_step * 0.03f;
+    }
 
     g_ndraw = 0;
 
@@ -177,11 +182,11 @@ void draw_scene(SDL_Renderer* r, const ViewerCam* cam, const ArenaState* s,
         SDL_FColor fa = {0.16f, 0.18f, 0.22f, 1};
         SDL_FColor fb = {0.20f, 0.23f, 0.28f, 1};
         int cx = 0;
-        for (float tx = -full; tx < full; tx += tile, cx++) {
+        for (float tx = -full_x; tx < full_x; tx += tile, cx++) {
             int cz = 0;
-            for (float tz = -full; tz < full; tz += tile, cz++) {
-                float x2 = (tx + tile > full) ? full : tx + tile;
-                float z2 = (tz + tile > full) ? full : tz + tile;
+            for (float tz = -full_z; tz < full_z; tz += tile, cz++) {
+                float x2 = (tx + tile > full_x) ? full_x : tx + tile;
+                float z2 = (tz + tile > full_z) ? full_z : tz + tile;
                 SDL_FColor fc = (show_grid && ((cx ^ cz) & 1)) ? fb : fa;
                 add_face(cam, w, h,
                          (Vf3){tx, -0.02f, tz}, (Vf3){x2, -0.02f, tz},
@@ -202,10 +207,10 @@ void draw_scene(SDL_Renderer* r, const ViewerCam* cam, const ArenaState* s,
                      ? (SDL_FColor){0.55f, 0.25f, 0.25f, 0.45f}
                      : (SDL_FColor){0.30f, 0.34f, 0.42f, 0.45f};
     float wt = 0.20f, wh = 1.2f;
-    add_box_split(cam, w, h, (Vf3){-ext - wt, 0, -ext - wt}, (Vf3){ ext + wt, wh, -ext}, wallc);
-    add_box_split(cam, w, h, (Vf3){-ext - wt, 0,  ext},      (Vf3){ ext + wt, wh,  ext + wt}, wallc);
-    add_box_split(cam, w, h, (Vf3){-ext - wt, 0, -ext},      (Vf3){-ext,      wh,  ext}, wallc);
-    add_box_split(cam, w, h, (Vf3){ ext,      0, -ext},      (Vf3){ ext + wt, wh,  ext}, wallc);
+    add_box_split(cam, w, h, (Vf3){-ext_x - wt, 0, -ext_z - wt}, (Vf3){ ext_x + wt, wh, -ext_z}, wallc);
+    add_box_split(cam, w, h, (Vf3){-ext_x - wt, 0,  ext_z},      (Vf3){ ext_x + wt, wh,  ext_z + wt}, wallc);
+    add_box_split(cam, w, h, (Vf3){-ext_x - wt, 0, -ext_z},      (Vf3){-ext_x,      wh,  ext_z}, wallc);
+    add_box_split(cam, w, h, (Vf3){ ext_x,      0, -ext_z},      (Vf3){ ext_x + wt, wh,  ext_z}, wallc);
 
     /* pillars */
     for (int i = 0; i < g->num_pillars; i++) {

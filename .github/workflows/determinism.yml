@@ -28,29 +28,64 @@ jobs:
           ${{ matrix.cc }} -std=c11 -Wall -Wextra -Werror ${{ matrix.opt }} \
             -o test_mv src/arena/arena_sim.c tests/test_movement.c
           ./test_mv
-      # Cross-platform hash equality: every job must produce this exact final
-      # state hash for the scripted match. Update ONLY on intentional sim change
-      # (and bump TUNE_VERSION / netcode version accordingly).
+      # Bomb mechanics is sim logic, so it belongs on the cross-arch matrix too -
+      # it previously ran only under ctest in netcode.yml (2 OSes, no ARM/macOS).
+      - name: bomb mechanics tests
+        shell: bash
+        run: |
+          ${{ matrix.cc }} -std=c11 -Wall -Wextra -Werror ${{ matrix.opt }} \
+            -o test_bmb src/arena/arena_sim.c tests/test_bomb_mechanics.c
+          ./test_bmb
+      - name: feel-metrics probe tests
+        shell: bash
+        run: |
+          ${{ matrix.cc }} -std=c11 -Wall -Wextra -Werror ${{ matrix.opt }} \
+            -o test_tr src/arena/arena_sim.c tools/tune_probes.c tests/test_tune_report.c
+          ./test_tr
+      # Cross-platform hash equality: every job must produce the pinned final
+      # state hash for the scripted match. The generator lives in
+      # tools/arena_hash.c and the pin in tools/pinned_hash.txt (TUNE_VERSION
+      # then hash). Update BOTH via tools/repin.ps1 on an intentional change.
       - name: pin scripted-match hash
         shell: bash
         run: |
-          cat > hash_main.c <<'EOF'
-          #include <stdio.h>
-          #include "src/arena/arena_sim.h"
-          int main(void){ ArenaState s; ArenaInput in[4];
-            arena_init(&s,0,4,0xB0BB1E5);
-            uint32_t r=0xC0FFEE01;
-            for(uint32_t t=0;t<5400;t++){
-              for(int i=0;i<4;i++){ r^=r<<13;r^=r>>17;r^=r<<5;
-                int sx=(int)(r&63)-32; if(sx<-31)sx=-31;
-                int sy=(int)((r>>6)&63)-32; if(sy<-31)sy=-31;
-                int set=((t+i*53)%137)==0;
-                int bomb=((t+i*37)%(90+i*80))<(30+i*40);
-                in[i]=arena_input_pack(sx,sy,((r>>12)&31)==0,bomb,set);}
-              arena_tick(&s,in);}
-            printf("%08x\n",arena_hash(&s)); return 0;}
-          EOF
-          ${{ matrix.cc }} -std=c11 ${{ matrix.opt }} -I. -o hash_check hash_main.c src/arena/arena_sim.c
+          read -r pinned_ver pinned_hash < tools/pinned_hash.txt
+          cur_ver=$(sed -n 's/^#define[[:space:]]*TUNE_VERSION[[:space:]]*\([0-9][0-9]*\).*/\1/p' \
+                    src/arena/arena_tuning.h)
+          ${{ matrix.cc }} -std=c11 ${{ matrix.opt }} -o hash_check \
+            tools/arena_hash.c src/arena/arena_sim.c
           h=$(./hash_check)
-          echo "hash: $h"
-          test "$h" = "18fbf1bb"
+          echo "hash: $h (pinned $pinned_hash) | TUNE_VERSION: $cur_ver (pinned $pinned_ver)"
+          if [ "$h" = "$pinned_hash" ]; then
+            echo "OK - sim behavior unchanged"
+          elif [ "$cur_ver" = "$pinned_ver" ]; then
+            echo "::error::INVARIANT #4 VIOLATED - the sim hash changed ($pinned_hash -> $h)"
+            echo "::error::but TUNE_VERSION is still $cur_ver. A gameplay change MUST bump"
+            echo "::error::TUNE_VERSION (netcode version handshake). Bump it, then run tools/repin.ps1."
+            exit 1
+          else
+            echo "::error::Sim hash changed ($pinned_hash -> $h) with TUNE_VERSION $pinned_ver -> $cur_ver."
+            echo "::error::That looks intentional - run tools/repin.ps1 and commit the updated"
+            echo "::error::tools/pinned_hash.txt and tools/tune_metrics.baseline."
+            exit 1
+          fi
+      # Human-readable companion to the hash pin: the hash proves SOMETHING
+      # changed, this shows WHAT. Regenerate via tools/repin.ps1.
+      - name: feel-metrics baseline
+        shell: bash
+        run: |
+          ${{ matrix.cc }} -std=c11 -Wall -Wextra -Werror ${{ matrix.opt }} \
+            -o tune_report src/arena/arena_sim.c tools/tune_probes.c tools/tune_report.c
+          # tr -d '\r': the MinGW build on the windows leg emits CRLF, while
+          # .gitattributes checks the baseline out as LF everywhere. Normalise
+          # the generated side so the diff compares content, not line endings.
+          ./tune_report | tr -d '\r' > metrics.now
+          if diff -u tools/tune_metrics.baseline metrics.now; then
+            echo "OK - feel metrics unchanged"
+          else
+            echo "::error::Feel metrics moved. If this was an intentional tune, run"
+            echo "::error::tools/repin.ps1 and commit the updated tools/tune_metrics.baseline"
+            echo "::error::(and tools/pinned_hash.txt). If not, you changed the movement"
+            echo "::error::model by accident - the diff above shows exactly which metric."
+            exit 1
+          fi
