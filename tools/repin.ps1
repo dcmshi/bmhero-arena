@@ -97,9 +97,10 @@ if (($hashChanged -or $metricsChanged) -and $newVer -eq $oldVer -and -not $Force
     exit 1
 }
 
-"$newVer $newHash" | Set-Content -Path $pinFile -Encoding ASCII
-# -Encoding ASCII + explicit LF: .gitattributes checks these out as LF on every
-# platform, and CI diffs the baseline literally.
+# Explicit LF for both: .gitattributes checks these out as LF on every platform
+# and CI diffs the baseline literally, so writing CRLF here would only create a
+# spurious working-tree difference for git to normalise away.
+[IO.File]::WriteAllText($pinFile,  "$newVer $newHash`n")
 [IO.File]::WriteAllText($baseFile, (($newMetrics -join "`n") + "`n"))
 
 Write-Host "`nRepinned. Commit tools/pinned_hash.txt and tools/tune_metrics.baseline."
