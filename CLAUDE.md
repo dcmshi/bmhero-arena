@@ -23,12 +23,22 @@ so you could not turn around mid-field without eating a wall. 6° cuts that to
 1.35u (35%) and a 180 to 30 ticks (0.50s), keeping the turn visibly gradual
 (A1.3's whole point). Metrics delta: `turn180_ticks 45→30`, `turn90_ticks
 23→15`, `turn_radius 2.063→1.349`; nothing else moved. Deterministic at
-`-O0/-O2/-O3`; full gate green; **9/9 ctest**.
+`-O0/-O2/-O3`; full gate green; **9/9 ctest**; **all 6 CI legs agree on
+`07fc6ade`**.
 **Guarded by new arena-fit tests** in `tests/test_tune_report.c` — turn radius
 must stay under half the arena's short half-width, and a 180 must land in the
 10–40 tick band (gradual, but dodgeable). These **fail at 4°/frame**, so the
-decision is encoded in tests rather than a comment. *Fork feel-boot on the new
-rate is pending; the fork submodule still points at the v6 sim.*
+decision is encoded in tests rather than a comment.
+
+**SHIPPED TO BOTH DEFAULT BRANCHES (2026-07-26).** Canonical `main` @ `73402a3`
+(both workflows green). **Fork `master` @ `cacaaa4`** — note the fork's default
+is `master`, not `main`. Master had been stranded at **A1.2a**; it now carries
+**A1.2b → A1.4 + the build/soak tooling (37 commits)** with the submodule at
+`73402a3` (v7). Verified on that exact merged tree: full patch rebuild (`make
+clean`) + **5/5 boot soak green**. The per-slice feature branches are retired as
+the working convention — merge to `master` from here.
+***Human feel-boot on the 6°/frame rate is the one thing still pending*** — the
+value was chosen from measured numbers, so it wants a subjective confirm.
 
 **CI now runs every unit test.** Gaps closed: `test_movement` was **not in
 CMakeLists at all** (so `ctest` silently skipped it), and `test_bomb_mechanics`
