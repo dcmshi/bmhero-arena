@@ -12,6 +12,53 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
   player struct, input, camera, coord mapping) — read before any A1.2+ work
 - `README.md` — this repo's layout, build, and the five invariants
 
+## Current status (2026-07-26)
+
+**Tuning-loop toolkit shipped — the build/verify loop is now scripted end to end
+(2026-07-26).** Sim untouched: hash still `18fbf1bb`, `TUNE_VERSION` still 6.
+Spec `docs/superpowers/specs/2026-07-26-tuning-loop-toolkit-design.md`, plan
+`docs/superpowers/plans/2026-07-26-tuning-loop-toolkit.md`. Canonical branch
+`feature/tuning-loop-toolkit`; fork branch `feature/build-and-soak-tooling`.
+
+**The new loop** (replaces the manual dance):
+
+```
+tools\tune-report.ps1 -Compare base,friction=0.020,friction=0.045   # pick a value from numbers
+<edit arena_tuning.h + bump TUNE_VERSION>
+tools\gate.ps1                                                      # everything CI runs, one command
+tools\repin.ps1                                                     # rewrite both pins, shows the diff
+<commit, push, bump submodule in the fork>
+.\build.ps1 -Config rwdi -Soak 5                                    # fork: PATH+patches+build+soak
+```
+
+- **`tools/tune_probes.c` + `tune_report.c`** — objective feel metrics: top
+  speed/ramp, **stop distance+time** (the friction knob), **180/90 turn time +
+  radius** (the turn knob), jump + running-jump arcs, arena traverse (the
+  60-vs-30 Hz question). Probes recentre player 0 (spawn 0 sits against two
+  walls; a 180 at top speed sweeps ~6.8u and would measure the wall) and use
+  `num_players=2` (with 1, the liveness check ends the round on tick 1).
+- **`tools/tune-report.ps1`** — variant sweep, `knob=value` (`friction`,
+  `accel`, `top`, `air`, `gravity`, `jump`, `turn`); `-SelfTest` asserts
+  cross-tune monotonicity. Enabled by `#ifndef` guards now wrapping every
+  `TUNE_*` define.
+- **`tools/tune_metrics.baseline`** — pinned in CI beside the hash. The hash
+  proves *something* changed; this shows *what* (`stop_distance 0.308 -> 0.183`).
+- **`tools/pinned_hash.txt`** now holds `<TUNE_VERSION> <hash>`, so CI and
+  `repin.ps1` distinguish an intentional tune from an **invariant-#4 violation**
+  (hash or metrics moved, version didn't) — `repin.ps1` refuses in that case.
+  The generator moved out of the workflow heredoc into `tools/arena_hash.c`.
+- **`tools/gate.ps1`** — all four suites + hash + metrics with CI's exact flags.
+- **Fork `build.ps1`** — composes the LLVM15/VS/MSYS2 PATH, rebuilds stale
+  patches (`make clean`, with `CC=clang LD=ld.lld` — a bare `make` picks up
+  MSYS2 gcc and rejects every MIPS flag), builds, and `-Soak N` fails the build
+  unless the soak is green.
+- **`arena-soak.ps1`** — generic `-Expect '<regex>'` / `-Rising '<regex>'` /
+  `-Mode <n>`; `-AnimProbe` is now an alias. New probes need no harness edit.
+
+Gotcha worth remembering: **MSYS2 gcc invoked by absolute path fails silently
+(exit 1, no diagnostic) unless its own `bin` is on PATH** — all three PS scripts
+prepend it.
+
 ## Current status (2026-07-24)
 
 **SESSION WRAP-UP (2026-07-24, late) — A1.4 + the A1.3/movement feel pass shipped;
