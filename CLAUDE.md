@@ -55,8 +55,28 @@ tools\repin.ps1                                                     # rewrite bo
 - **`arena-soak.ps1`** — generic `-Expect '<regex>'` / `-Rising '<regex>'` /
   `-Mode <n>`; `-AnimProbe` is now an alias. New probes need no harness edit.
 
+**Debugging utils (same slice):**
+- **`tools/arena_trace.c` + `tools/trace-diff.ps1`** — per-tick CSV of the SAME
+  scripted match as `arena_hash.c`, and a differ that reports the **first
+  diverging tick and which field moved**. Answers "the hash changed — where?",
+  which the pin alone can't. Verified: `base` vs `friction=0.020` → *"tick 731,
+  p1_x/p1_vx"*. `-OptA -O0 -OptB -O3` on the same tuning is a **determinism
+  hunt** — divergence there is an invariant #1/#2 bug, not a tune (currently
+  bit-identical over 1200 ticks of full state). `gate.ps1` guards the two files
+  from drifting apart (trace's final hash must equal `arena_hash`'s).
+- **`tools/conv.ps1`** — the unit translation this project constantly does by
+  hand: Q20.12 ↔ sim units ↔ **Hero units (×120, `arena_bridge.cpp:23`)** ↔
+  game u/frame (S=1/119) ↔ BAM/degrees ↔ ticks/seconds. `-Table` decodes the
+  whole tuning table. Cross-checks: `-Deg 4` → BAM `728` = `TUNE_TURN_RATE`,
+  and its "180° = 45 ticks" matches the probe's measured `turn180_ticks`.
+- **Fork `tools/arena-log.ps1`** — summarise/filter `arena_bridge.log` instead
+  of eyeballing 30k. Default view gives marker counts, the `[capture]` draw-gate
+  line (absent = bridge never armed = soak HANG), and per-anim-index **"advanced
+  (played)" vs "STATIC (set but never advanced)"** — it independently flags the
+  known A1.4 hold-while-moving artifact. `-Marker/-Grep/-Tail/-Follow`.
+
 Gotcha worth remembering: **MSYS2 gcc invoked by absolute path fails silently
-(exit 1, no diagnostic) unless its own `bin` is on PATH** — all three PS scripts
+(exit 1, no diagnostic) unless its own `bin` is on PATH** — all the PS scripts
 prepend it.
 
 ## Current status (2026-07-24)

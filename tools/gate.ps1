@@ -77,6 +77,25 @@ if ($h -eq $pinHash) {
     $fails++
 }
 
+# --- trace/hash agreement ---
+# arena_trace.c replays the SAME scripted match as arena_hash.c so a trace can
+# explain the pinned hash. They are separate files, so guard against drift:
+# the trace's final-tick hash must equal the generator's output.
+$traceExe = Join-Path $work "arena_trace.exe"
+& $CC @FLAGS -o $traceExe (Join-Path $root "tools\arena_trace.c") $SIM
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[trace] BUILD FAILED" -ForegroundColor Red; $fails++
+} else {
+    $lastRow = (& $traceExe --player 0 | Select-Object -Last 1) -split ","
+    if ($lastRow[1] -eq $h) {
+        Write-Host "[trace] final-tick hash $($lastRow[1]) agrees with arena_hash" -ForegroundColor Green
+    } else {
+        Write-Host "[trace] DRIFT: trace ends at $($lastRow[1]) but arena_hash says $h" -ForegroundColor Red
+        Write-Host "        arena_trace.c and arena_hash.c must replay the SAME scripted match."
+        $fails++
+    }
+}
+
 # --- feel-metrics baseline ---
 $reportExe = Join-Path $work "tune_report.exe"
 & $CC @FLAGS -o $reportExe $SIM (Join-Path $root "tools\tune_probes.c") (Join-Path $root "tools\tune_report.c")

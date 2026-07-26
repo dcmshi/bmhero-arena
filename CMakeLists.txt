@@ -47,6 +47,11 @@ target_link_libraries(tune_report arena_sim)
 add_executable(arena_hash tools/arena_hash.c)
 target_link_libraries(arena_hash arena_sim)
 
+# Per-tick trace of that same scripted match - turns an opaque hash change into
+# "diverges at tick N, in this field" (see tools/trace-diff.ps1).
+add_executable(arena_trace tools/arena_trace.c)
+target_link_libraries(arena_trace arena_sim)
+
 # --- netplay: GekkoNet (BSD-2, C API, C++ internals) via FetchContent ---
 include(FetchContent)
 FetchContent_Declare(gekkonet
