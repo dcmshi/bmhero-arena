@@ -657,3 +657,135 @@ the probe window; the crash-check catches those.
   artifact.
 - Both resolve with a real FIXED arena camera (a future item, alongside rendering
   the real walled arena so `arena_classic` geom can be used - §8.5a).
+
+### 8.14 A1.5 fixed camera + A1.2g floor diagnosis + the m2c pipeline (2026-07-26)
+
+**THE UNLOCK THIS SESSION: readable, typed C for any undecompiled function, in
+one command** — `tools/decomp-func.ps1 <func>` in the fork.
+
+```
+splat  (lib/bmhero/splat.yaml, already configured)  -> asm/nonmatchings/**/*.s
+lib/bmhero/tools/m2ctx                              -> ctx.c (decomp's own types)
+m2c --context                                       -> typed C
+```
+
+Everything was already in the repo (`splat.yaml`, vendored `tools/n64splat`,
+`tools/m2ctx`, `tools/asm-differ`); it only needed the ROM staged as
+`baserom.z64` plus a venv. Set up at `.tools/decomp-venv` and `.tools/m2c`;
+`asm/`, `baserom.z64` and `ctx.c` are all gitignored, so the submodule stays
+clean. First run ~2 min (splat), then seconds.
+
+**This beats reading `RecompiledFuncs` machine-C** (the A1.3/A1.4 method): m2c
+does cross-function type inference against the decomp's headers, so you get
+`gPlayerObject->moveAngle`, not `*(f32*)(a0 + 0x54)`. Validated against ground
+truth — `func_80281E50` returns `sp1C = 4.0f`, matching the `0x40800000` turn
+step previously derived by hand.
+
+Three constructs in `ctx.c` defeat m2c's C parser and are auto-patched by the
+script: `OS_CPU_COUNTER (OS_CLOCK_RATE*3/4)`, and two `sizeof(T) * 3` array
+sizes. Symptom if you hit it raw: *"Failed to evaluate expression \*3 at compile
+time"*.
+
+**Correction to record:** the decomp does NOT have `code_extra_0` decompiled.
+`func_80281E50` is present only as a `#pragma GLOBAL_ASM` stub — 182 of them in
+that overlay. The hand-RE from machine-C was justified; what is new is that m2c
+can now decompile those stubs on demand.
+
+**Bonus finding:** the walker's turn is **state-dependent**, which the flat
+"4.0deg/frame" note does not capture. `actionState` ∈ {5,6,0x1D,0x22} takes a
+`360.0f` path (effectively instant); a `func_802813EC()==3` branch swaps 2.0 for
+4.0. Worth revisiting when turn feel is next examined.
+
+#### The camera — who actually owns `gView`
+
+`func_8001994C` (decomp `src/boot/17930.c:605`) **derives `eye` and `up.y` every
+frame** from `at` + `rot` + `dist`, gated on `D_8016E134 == 0`:
+
+```c
+view_rot_y = gView.rot.y + 90.0f;          /* NOTE THE +90 OFFSET */
+eye.x = dist * cos(view_rot_y) * cos(rot.x) + at.x;
+eye.y = dist * sin(rot.x)                   + at.y;
+eye.z = dist * sin(view_rot_y) * cos(rot.x) + at.z;
+up.y  = (rot.x >= 90 && rot.x < 270) ? -1 : +1;
+```
+
+Probe-confirmed exactly, live: with `at=(0,340,0)`, `rot=(20,114.70,0)`,
+`dist=800` → predicted eye `(-683.1, 613.6, -314.5)` vs measured
+`(-682.96, 613.62, -314.16)`.
+
+- **`rot.x` is PITCH, `rot.y` is YAW, both in DEGREES.** The rail camera ran at
+  pitch **20** — `sin(20)=0.34`, so W/S read at a THIRD of A/D. That was the
+  real foreshortening cause. Screen-travel ratio is `sin(pitch)`, not `cos`.
+- **The `+90` yaw offset** means `rot.y = 0` puts the eye at **+Z**. There is no
+  handedness constant to guess.
+- The game nudges `rot.x` of exactly 90/270 by 1 degree (gimbal guard).
+
+#### What A1.5 actually had to do (two things the design got wrong)
+
+1. **STAMP TWICE PER FRAME.** Writing the pose only before `func_80024744` is
+   not enough — the game's camera update runs INSIDE that call and reverts it.
+   Proven: post-write read-back logged `rot=(60,0,0)` while the next frame's
+   entry read `rot=(20,2,0)`. The pre-update stamp is still required so the
+   stick rotation (`func_80024744` rotates the stick by `rot.y`) sees our stable
+   yaw; the post-update stamp is what the draw sees.
+2. **WRITE `eye`/`up` OURSELVES.** `D_8016E134` is evidently non-zero here, so
+   the derivation never runs. Diagnostic that caught it: with only `at/rot/dist`
+   written, the picture was **PIXEL-IDENTICAL across a 2× change of
+   `ARENA_CAM_DIST`**, and the logged `eye` never left the rail's last value.
+
+Pose constants live in `patches/arena_cam.h` — pure constants + math, no game
+types, so the SAME header compiles in the MIPS patch and in a host test
+(`tools/test_arena_cam.c`, run by `tools/run-cam-tests.ps1`, gated in
+`build.ps1`). **No runtime trig**: pitch/yaw are compile-time, so their sin/cos
+are literals, avoiding the §8.11 silent-libcall land mine. The host test guards
+that the literals still match their angles, that yaw stays 0, that
+`sin(pitch) >= 0.85`, and that the effective-yaw trig matches the game's `+90`.
+All three guards were verified to FIRE, not merely pass.
+
+#### A1.2g — the fall is NOT the death path
+
+Standing note said arena hazards were damage tiles and "the bypassed death path
+crashes". Measured otherwise, with `actionState` logged beside position:
+
+```
+ppos=(353.38,   240.00,  630.45)   state=4
+ppos=(353.38, 30000.00, 1173.62)   state=4    <-- Y jumps, state UNCHANGED
+```
+
+`actionState` never changes → no death state, no crash. **30000 is the ground
+query's "no floor here" sentinel**: the player walked off the floor POLYGON,
+because the real floor is smaller than the sim's collidable bounds. That is a
+**§8.5a violation**, not a hazard-object problem, and it changes what A1.2g has
+to fix.
+
+**Floor guard (containment, NOT a fix).** The bridge remembers the last position
+with a valid ground height; the patch restores it when the sentinel appears
+(state native — patches are stateless). Sentinel samples per run 6 → 2, and the
+sweep maps to z=1245 instead of stalling at 630. The sim still believes the
+player is out of bounds, so sim and render disagree while the guard holds. The
+real fix is re-matching the sim geometry to the measured floor — a sim change
+and a `TUNE_VERSION` bump.
+
+`[floor]` in the log tracks on-floor min/max every frame (BEFORE the log
+throttle — a 30-frame sample cannot locate an edge) and prints extent, centre
+and span. That centre is also what the fixed camera should aim at.
+
+#### Probe modes and gates added
+
+- `ARENA_AUTO_BATTLE=6` — camera probe: logs `[cam] at/eye/rot/up/type/dist`,
+  `wrote_rot`/`wrote_at` (post-write read-back), `ppos`, `state`, and `[floor]`.
+  Sweeps all four directions. **Mode 6 had to be added to BOTH auto-battle gates
+  in `main.cpp`** or the frontend mash never fires and the boot hangs.
+- `arena-soak.ps1 -Constant '<regex>'` — value must NEVER change (inverse of
+  `-Rising`). Completes the trio with `-Expect`. **Caveat learned the hard way:
+  a constancy gate can pass for the WRONG reason** — it passed on the rail
+  camera's yaw when that happened to sit still. Assert on a value only YOU set
+  (pitch 60 worked; yaw 0 did not, initially).
+
+#### Build race (bit 3× in one session)
+
+Straight after a patches `make clean`, the first cmake run can fail while
+N64Recomp regenerates `RecompiledPatches/`; an immediate retry always succeeds.
+`build.ps1` now retries once. **This matters more than it looks: a FAILED build
+leaves the PREVIOUS exe in place and the soak happily tests that stale binary.**
+It silently invalidated an A/B isolation run before it was caught.

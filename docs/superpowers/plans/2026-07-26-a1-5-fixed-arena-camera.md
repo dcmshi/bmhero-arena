@@ -565,7 +565,12 @@ Record and sanity-check **all four** of these — they are the inputs Task 4 dep
 1. **`type=`** — must be one of `{1,2,5,6,7,8}` (expected `6`). **If it is not, STOP**: the stick is not being rotated at all, the input premise changes, and Task 4 needs re-planning before any code is written.
 2. **`at=` / `eye=`** — plausible world coordinates, not garbage or NaN. Garbage means the `struct View` offsets are wrong; re-check `types.h:257` before continuing.
 3. **`rot=`** — confirm `rot.y` varies across samples (the documented 25–89° swing). This is the bug, captured. Also note which component looks like pitch, to confirm the `rot` write order in Task 4.
-4. **`eye.z` vs `at.z`** — the sign of `(eye.z - at.z)` **is** `ARENA_CAM_Z_SIGN`. Record it.
+4. **`D_8016E134`** — the gate on the game's own eye derivation (`func_8001994C`,
+   `src/boot/17930.c:605`). It must be `0` for the game to derive `eye`/`up` from
+   the `at`/`rot`/`dist` we write. If the probe shows `eye` failing to track a
+   changing `at`, the derivation is not running and Task 4 must write `eye`/`up`
+   explicitly. (There is no `ARENA_CAM_Z_SIGN` to resolve — the game's `+90` yaw
+   offset settles the handedness; see `arena_cam.h`.)
 
 Also compute a `ARENA_CAM_DIST` starting value: the distance from `eye` to `at` in the samples where the whole arena looks framed. The arena is 1896 × 928 Hero units.
 
@@ -665,23 +670,34 @@ In `arena_render_routine`, in the same battle block, **after** the probe logging
          * gActiveContStickX/Y in place by gView.rot.y. Writing the camera AFTER
          * that call would rotate this frame's stick by the game's swinging yaw
          * while the picture used ours - they'd disagree by up to 64deg, which is
-         * worse than the drift we're fixing. */
+         * worse than the drift we're fixing.
+         *
+         * We write ONLY at / rot / dist. func_8001994C (decomp src/boot/17930.c:605,
+         * recovered with tools/decomp-func.ps1) derives eye AND up.y from exactly
+         * these every frame, gated on D_8016E134 == 0. Writing eye ourselves would
+         * simply be recomputed away - and the resulting "nothing changed" is a far
+         * harder symptom to read than a wrong pose. Let the game finish the job. */
         {
-            f32 ox, oy, oz;
-            f32 ax = arena_cam_at_x(), ay = arena_cam_at_y(), az = arena_cam_at_z();
-            arena_cam_eye_offset(&ox, &oy, &oz);
-
-            gView.at.x  = ax;      gView.at.y  = ay;      gView.at.z  = az;
-            gView.eye.x = ax + ox; gView.eye.y = ay + oy; gView.eye.z = az + oz;
-            gView.up.x  = 0.0f;    gView.up.y  = 1.0f;    gView.up.z  = 0.0f;
-            gView.rot.x = ARENA_CAM_PITCH_DEG;
-            gView.rot.y = ARENA_CAM_YAW_DEG;   /* the value that MUST stay fixed */
+            gView.at.x  = arena_cam_at_x();
+            gView.at.y  = arena_cam_at_y();
+            gView.at.z  = arena_cam_at_z();
+            gView.rot.x = ARENA_CAM_PITCH_DEG;  /* pitch; game nudges 90/270 by 1 */
+            gView.rot.y = ARENA_CAM_YAW_DEG;    /* the value that MUST stay fixed */
             gView.rot.z = 0.0f;
             gView.dist  = ARENA_CAM_DIST;
         }
 ```
 
-**If Task 3 Step 6 showed a different `rot` component order** (e.g. pitch in `.x` vs `.z`), use what was measured — `rot.y` is confirmed as yaw (§8.11), the others are not.
+**Do not write `gView.eye` or `gView.up`.** The game owns both. With yaw 0 and the
+game's `+90` offset the eye lands at `at + (0, dist*sin(pitch), dist*cos(pitch))`
+— i.e. **+Z, above** — which puts the arena's long axis (X) horizontal, as
+intended. `arena_cam_eye_offset()` in the header models this for the host test
+only; the patch never calls it.
+
+**If `D_8016E134 != 0` in the arena**, the derivation does not run and the eye
+will be stale. Task 3's probe reveals this immediately (eye won't track the `at`
+we write). In that case, write `eye`/`up` explicitly using the model in
+`arena_cam.h`, matching the game's formula exactly.
 
 - [ ] **Step 4: Build, and verify no math libcall leaked in**
 

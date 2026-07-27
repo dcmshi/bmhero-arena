@@ -14,6 +14,46 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
 
 ## Current status (2026-07-26)
 
+> **RESUMING? READ `docs/HANDOFF-2026-07-26.md` FIRST.** It lists the open items
+> in priority order, the traps that cost time, and the one-time setup already
+> done. RE detail for the camera + floor work is in integration notes **§8.14**.
+
+**A1.5 FIXED CAMERA — works, on `feature/a1.5-fixed-camera` (fork), NOT merged
+(2026-07-26).** The Nitros rail camera swung yaw 58→178° and sat at pitch **20°**
+(`sin(20)=0.34`, so W/S read at a THIRD of A/D). Because the game rotates the
+stick by `gView.rot.y`, that corrupted **input** as well as the picture — a held
+direction curved, which is what made feel-testing untrustworthy. Now a static
+**pitch 60 / yaw 0** pose, pitch+yaw provably constant across 22 samples/run;
+5/5 soak; sim untouched. Two things measurement forced: the pose must be
+**stamped twice per frame** (the game's camera update runs inside
+`func_80024744` and reverts it), and we must write **`eye`/`up` ourselves**
+(`func_8001994C`'s `D_8016E134` gate is closed here — caught because the picture
+was pixel-identical across a 2× `ARENA_CAM_DIST` change). Framing is not
+finished: `DIST` 2200 frames most of the floor, and `at` is anchored on the
+player spawn rather than the true floor centre.
+
+**RE TOOLING — `tools/decomp-func.ps1` gives typed C for ANY undecompiled
+function in one command** (splat → `m2ctx` → m2c). Beats reading
+`RecompiledFuncs` machine-C: real type inference against the decomp's own
+headers. Validated against ground truth (`func_80281E50` → `sp1C = 4.0f`,
+matching the hand-derived `0x40800000`). It immediately corrected the A1.5
+design. **Note:** the decomp does NOT have `code_extra_0` decompiled — 182
+`GLOBAL_ASM` stubs — so the earlier hand-RE was justified; m2c just decompiles
+them on demand now. §8.14.
+
+**A1.2g — the fall is NOT the death path (diagnosis corrects a standing note).**
+`actionState` stays **4** while `Pos.y` jumps to 30000: that is the ground
+query's "no floor here" sentinel, i.e. the player walked off the floor POLYGON
+because the real floor is smaller than the sim's collidable bounds (**§8.5a
+violation**, not a hazard-object problem). A **floor guard** (containment, not a
+fix) stops the visible fall. The real fix — re-matching sim geometry to the
+measured floor — is **the keystone open item**; it also gives the camera its
+true centre. Exit trigger / damage tiles / HUD are untouched.
+
+**KNOWN RED:** the A1.5 camera **regresses the A1.4 set-pose gate** (isolated by
+A/B: camera off → PASS 2/2, camera on → FAIL 3/3; mechanism unproven). The gate
+is deliberately left failing rather than weakened — it reports something true.
+
 **TURN RATE TUNED — `TUNE_VERSION` 6 → 7, hash `18fbf1bb` → `07fc6ade`
 (2026-07-26).** `TUNE_TURN_RATE` `0x02D8` (4.0°/frame, the authentic
 `code_extra_0` walker) → **`0x0444` (6.0°/frame)**. First tune chosen from
