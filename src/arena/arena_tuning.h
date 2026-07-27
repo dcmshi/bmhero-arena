@@ -160,7 +160,13 @@
 
 /* -- match rules -- */
 #ifndef TUNE_START_HP
-#define TUNE_START_HP        2
+#define TUNE_START_HP        4      /* 4, not 2, so the reused Hero HUD maps 1:1.
+                                     * The game's own in-level HUD draws gMaxHealth
+                                     * slots and it hard-codes 4 (decomp 76640.c
+                                     * func_80088134), so a sim HP of 4 lets the
+                                     * bridge drive gHealthCount straight from the
+                                     * sim with no scaling and no half-bars. Also a
+                                     * gameplay change: rounds last longer. */
 #endif
 #ifndef TUNE_ROUND_TICKS
 #define TUNE_ROUND_TICKS     (120 * 60) /* 2:00 */
@@ -177,7 +183,11 @@
 
 /* Bump when any value changes; folded into the session version hash. */
 #ifndef TUNE_VERSION
-#define TUNE_VERSION         10     /* 2026-07-27: (v10) arena0 spawns pulled 6.5 -> 5.5 to
+#define TUNE_VERSION         11     /* 2026-07-27: (v11) TUNE_START_HP 2 -> 4 so the reused
+                                     * Hero HUD's 4 health slots (gMaxHealth, hard-coded 4
+                                     * in the game) map 1:1 onto sim HP - no scaling, no
+                                     * half-bars. Rounds last longer as a result.
+                                     * 2026-07-27: (v10) arena0 spawns pulled 6.5 -> 5.5 to
                                      * clear the Nitros room's DAMAGE TILES (surface type
                                      * 0xF7, 69AA0.c:411) which occupy |x|,|z| >= 750 Hero -
                                      * the old spawns were 780 out, so every player spawned
