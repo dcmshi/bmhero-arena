@@ -10,6 +10,9 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
 - `docs/bmhero-recomp-integration-notes.md` — **living RE reference for the
   fork-side render bridge** (patch/export mechanism, per-frame hooks, object &
   player struct, input, camera, coord mapping) — read before any A1.2+ work
+- `docs/renderdoc-capture-reference.md` — **capturing/inspecting real frames**
+  (RenderDoc + qrenderdoc scripting quirks); the visual GROUND TRUTH when a
+  screenshot disagrees with a calculation — see §8.17 for why that matters
 - `README.md` — this repo's layout, build, and the five invariants
 
 ## Current status (2026-07-26)

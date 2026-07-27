@@ -925,6 +925,14 @@ overwritten in between or simply unused by the projection.
 
 ## §8.16 — A1.5 camera: the pose is correct; three framing hypotheses eliminated (2026-07-27)
 
+> **PARTLY SUPERSEDED BY §8.17.** The conclusion "the drawn floor is offset
+> from the collision floor" in this section is **WRONG** — it was inferred from
+> screenshots that were silently cropped to a quarter of the frame. The camera
+> was correct and the drawn floor *is* the collision floor. What remains valid
+> here: the proof that the pose is honoured, the three eliminated hypotheses
+> and their RE, and the `shot_measure.py` classifier lesson. Read §8.17 for the
+> root cause.
+
 **Correcting §8.15's closing note.** It said `gView.at` was not honoured and the
 view followed the player. That was wrong, and it was wrong because it was inferred
 from eyeballed screenshots rather than measured.
@@ -1000,43 +1008,60 @@ mismatch is with what is *drawn*.
 
 ---
 
-## §8.17 — The A1.5 camera was correct all along; the SCREENSHOT TOOL was lying (2026-07-27)
+## §8.17 — ROOT CAUSE ANALYSIS: the A1.5 "camera bug" was a cropped screenshot (2026-07-27)
 
 **Outcome: A1.5 is done.** `ARENA_CAM_DIST` 2800 frames the whole 1900×1900 arena,
-centred, with margin on every side. Nothing about the camera code needed fixing.
+centred, with margin on every side. **No camera code needed changing.**
 
-### What actually happened
+Scripting/API detail for reproducing any of this lives in
+`docs/renderdoc-capture-reference.md`.
 
-`tools/capture-game.ps1` was capturing **only the top-left quarter of the frame**,
-and had been for weeks.
+### Summary
 
-The window's backbuffer is **1600×900**. On a high-DPI display Windows reports
-`GetClientRect` to a **non-DPI-aware** process in *logical* pixels — 800×450. The
-script allocated an 800×450 bitmap and `PrintWindow` blitted the top-left 800×450
-of the real surface into it, **unscaled**. One-line fix: call
-`SetProcessDPIAware()` before `GetClientRect`.
+| | |
+|---|---|
+| **Symptom** | The fixed arena camera appeared not to frame the arena: the floor "hugged the bottom-right corner" and shrank as `ARENA_CAM_DIST` grew (measured: 62% → 4.5% of viewport as dist went 400 → 4000). |
+| **Believed cause** | Something in the render pipeline was ignoring or overriding our camera pose. |
+| **Actual cause** | `tools/capture-game.ps1` was capturing **only the top-left quarter of the frame**. The camera was correct throughout. |
+| **Mechanism** | Backbuffer is **1600×900**. `GetClientRect` reports **800×450** to a **non-DPI-aware** process. The script allocated an 800×450 bitmap and `PrintWindow` blitted the top-left 800×450 of the real surface into it, **unscaled**. |
+| **Fix** | One line: `SetProcessDPIAware()` before `GetClientRect`. |
+| **Detected by** | A RenderDoc capture of the same session, seconds apart from a screenshot. They disagreed completely. |
 
-This was a *believable* lie, which is what made it expensive. The images showed
-real game content, correctly lit, animating, and they changed when the camera
-changed. What they didn't show was that the arena was centred — because a centred
-arena drifts out of the top-left quarter as the camera pulls back. Hence the
-symptom "the floor hugs the bottom-right corner and shrinks as `ARENA_CAM_DIST`
-grows", which is exactly what a correctly-centred arena looks like through that
-crop.
+### Why it survived so long
 
-**Cost: three wrong root causes**, each hypothesised, implemented and tested
-against those screenshots — `gView.at` being overwritten, the level's far clip
-plane, and level-chunk view culling. All three were real mechanisms, correctly
-RE'd, and irrelevant. Two conclusions written into these notes were wrong and have
-been corrected.
+The tool produced a **believable** lie. The images showed real game content,
+correctly lit and animating, and they *changed when the camera changed* — so
+every cheap sanity check passed. Screenshots had been used for months as the
+project's visual verification (`arena-verification-loop`), and had never once
+been compared against an independent source.
 
-### What settled it
+The crop also produced a **coherent false narrative**. A centred arena drifts out
+of the top-left quarter as the camera pulls back, which reads exactly as "the
+floor hugs the corner and shrinks with distance" — a symptom that *invites*
+render-pipeline explanations. Worse, it responded plausibly to experiments: the
+`at`-offset sweep showed coverage rising as we aimed +X/+Z, which looked like
+strong evidence that the drawn floor was offset from the collision floor.
 
-A **RenderDoc capture of the same session**, seconds apart from a PrintWindow
-screenshot. The screenshot showed a zoomed corner fragment; the capture showed the
-entire arena, framed and centred.
+### The wrong paths, and why each was plausible
 
-Two independent confirmations from the capture, before even looking at the image:
+Each was hypothesised, implemented, and tested against the cropped images. All
+three are **real mechanisms, correctly reverse-engineered** — and all three were
+irrelevant. They are recorded because the RE is worth keeping.
+
+| # | Hypothesis | Why plausible | How refuted |
+|---|---|---|---|
+| 1 | `gView.at` overwritten before the draw | `63F90.c` really does set `gView.at.x = gPlayerObject->Pos.x` in a dozen places | A dist-400 close-up shows the arena **centre**, not the player 1100 units away. Also `func_80076374` (the camera dispatcher) runs *inside* `func_80024744`, so our post-update stamp already wins. |
+| 2 | Level far clip plane | ZFAR is per-level (`D_801779C8.raw` ← `gLevelInfo[level]->unk2C`, `56800.c:372`), consumed by `guPerspective` (`71AA0.c:610`), and our camera sits far further back than the map's own | Probe tag 9: MAP_NITROS_1 already authors **ZFAR 8000**; the floor's far corner is only ~2400 away. Overriding it changed nothing. |
+| 3 | Level-chunk view culling | `func_800663EC` really is "do view culling for geometry level chunks" — a box of chunks around `gView.at` sized by `D_80104C70[gDebugDispType][0..5]` **+ `recomp_get_render_chunk_radius()`** | Forcing that radius 0 → 3 → 6 → 10 moved coverage 12.9% → 13.7%, then saturated. Reverted rather than left in on a dead hypothesis. |
+
+Two conclusions written into these notes from that evidence were **wrong** and
+have been retracted: that `at` was ignored and the view followed the player, and
+that the drawn floor was offset from the collision floor.
+
+### What actually settled it
+
+A RenderDoc capture, which confirmed the camera **twice over before anyone looked
+at the image**:
 
 - **Depth.** Clip-space `w` is view-space depth. Our camera at pitch 60 / dist
   2400 predicts `depth = 2486.6 − 0.5·z` for a floor point at world `z`; for the
@@ -1044,32 +1069,44 @@ Two independent confirmations from the capture, before even looking at the image
   capture reported **`w ∈ [2006.6, 2966.6]`** — a ~5-unit match.
 - **Width.** Clip-x extremes of ±1537/1553 correspond to world `x = ±950`.
 
-So the drawn floor *is* the collision floor, and the camera *was* where we set it.
+Then the saved backbuffer showed the whole arena, framed and centred.
 
-### Tooling now in the repo
+### What would have caught it sooner
 
-- `tools/rd-capture.ps1` — launch hooked, wait for the arena, trigger a capture,
-  optionally save the frame to PNG. **No keyboard involved**: `renderdoccmd` has
-  no "trigger capture" verb and F12 needs foreground focus, which a background
-  process cannot reliably take. Instead qrenderdoc's **embedded** Python connects
-  over target control (`EnumerateRemoteTargets` → `CreateTargetControl` →
-  `TriggerCapture`). No system Python or packages needed.
-- `tools/rd_trigger.py`, `rd_saveframe.py`, `rd_analyse.py`.
-- `tools/shot_measure.py` — floor coverage/centroid/bbox + player pixel position.
+- **Comparing the instrument against an independent source, once.** A single
+  RenderDoc capture at any point in the previous two sessions would have ended it.
+- **Noticing the resolution.** The captures were 800×450 while the game renders
+  1600×900. The number was printed on every single capture (`SAVED ... (800x450)`)
+  and never questioned.
+- **Distrusting a model that keeps losing.** The projection maths disagreed with
+  the screenshots in *every* configuration tried. Repeated disagreement between a
+  simple model and an instrument is evidence about the instrument.
 
-Two traps worth keeping about scripting qrenderdoc:
+### Corrective actions taken
 
-1. **Paths must go through the environment**, not argv. `qrenderdoc`'s usage is
-   `qrenderdoc [options] filename`, so an extra argument after `--python x.py` is
-   taken as a *capture to open* and never reaches the script.
-2. **The script cannot locate itself.** `__file__` is undefined in that embedded
-   interpreter, and `argv[0]` is `qrenderdoc.exe` under Program Files — not
-   writable, so a script that opens its log there dies at import with **no output
-   at all**, which looks identical to "the script never ran".
+1. `capture-game.ps1` fixed (`SetProcessDPIAware`) with a banner in the file
+   explaining what the bug cost, so the next reader doesn't re-learn it.
+2. `tools/rd-capture.ps1` + `rd_trigger.py` / `rd_saveframe.py` /
+   `rd_analyse.py` added — independent visual ground truth, no keyboard needed.
+3. `tools/shot_measure.py` added — turns screenshots into numbers (coverage,
+   centroid, bbox, player pixel position) instead of impressions.
+4. Handoff trap list and `CLAUDE.md` updated; the memory
+   `validate-instruments-first` records the general lesson.
 
 ### The lesson
 
-The screenshot tool had never been validated against ground truth. It was trusted
-for months because its output *looked* right. A measurement instrument that has
-never been checked against an independent source is a hypothesis, not evidence —
-and when a model and an instrument disagree repeatedly, suspect the instrument.
+**A measuring instrument that has never been checked against an independent
+source is a hypothesis, not evidence.** When a model and an instrument disagree
+repeatedly, suspect the instrument.
+
+This is the same failure as `measure-geometry-not-player` in different clothing:
+there, a measurement was confounded by the very bound it was meant to test; here,
+a measurement was confounded by the very framing it was meant to test.
+
+### Tooling notes
+
+See `docs/renderdoc-capture-reference.md` for the qrenderdoc scripting quirks
+(no `renderdoc.pyd`; embedded Python 3.6.4; `renderdoccmd` has no trigger verb;
+F12 needs foreground focus; pass paths via the environment; `__file__` undefined
+and `argv[0]` unwritable; GUI app so log to a file; seek to end-of-frame before
+saving the backbuffer).
