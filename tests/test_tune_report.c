@@ -40,13 +40,13 @@ int main(void) {
     CHECK(!m.stop_capped, "stop probe hit its cap - player never came to rest");
     CHECK(m.stop_distance < 20.0, "stop_distance %.3f implausibly large", m.stop_distance);
 
-    /* turn: bounded rate => 180deg takes ~0x8000/TUNE_TURN_RATE ticks */
-    int expect_180 = 0x8000 / TUNE_TURN_RATE;
-    CHECK(m.turn180_ticks >= expect_180 - 3 && m.turn180_ticks <= expect_180 + 3,
-          "turn180_ticks %d vs expected ~%d", m.turn180_ticks, expect_180);
-    CHECK(m.turn90_ticks > 0 && m.turn90_ticks < m.turn180_ticks,
-          "turn90 (%d) must be positive and shorter than turn180 (%d)",
-          m.turn90_ticks, m.turn180_ticks);
+    /* turn: v12 snaps the facing (TUNE_TURN_SNAP_SPEED above top speed), so a
+     * reversal completes in ONE tick regardless of angle. Previously this
+     * asserted a bounded ~0x8000/TUNE_TURN_RATE sweep; see the arena-fit block
+     * below for why that decision was reversed. */
+    CHECK(m.turn180_ticks == 1 && m.turn90_ticks == 1,
+          "turns must SNAP in one tick (180 took %d, 90 took %d)",
+          m.turn180_ticks, m.turn90_ticks);
     CHECK(!m.turn_capped, "turn probe hit its cap - yaw never reached target");
     CHECK(m.turn_radius > 0.0, "turn_radius must be positive (got %.3f)", m.turn_radius);
 
@@ -70,32 +70,31 @@ int main(void) {
     CHECK(m.traverse_ticks > 0, "traverse_ticks must be positive");
     CHECK(!m.traverse_capped, "traverse probe hit its cap - player never crossed");
 
-    /* ---- arena-fit guards on the turn rate (2026-07-26 tune) --------------
-     * These are GAMEPLAY assertions, not model-consistency ones: they tie the
-     * turn tuning to the map the sim actually collides with, so a future map
-     * or turn change that makes the arena unturnable fails here instead of in
-     * a playtest. They are why TUNE_TURN_RATE moved 4deg -> 6deg/frame. */
+    /* ---- arena-fit guard on the turn (2026-07-26, REVISED 2026-07-27) -----
+     * A GAMEPLAY assertion, not a model-consistency one: it ties the turn
+     * tuning to the map the sim actually collides with, so a future map or turn
+     * change that makes the arena unturnable fails here rather than in a
+     * playtest.
+     *
+     * The v7 form of this block is what drove TUNE_TURN_RATE 4deg -> 6deg: at
+     * 4deg a 180 at top speed swept a 2.06u radius against a 3.87u short
+     * half-width. It also asserted a RESPONSIVENESS BAND - 180 in 10..40 ticks -
+     * whose lower bound deliberately forbade a snap, because A1.3's bounded turn
+     * existed to preserve momentum.
+     *
+     * v12 REVERSES that. Feel testing found the sweep made every direction
+     * change arc (velocity is rebuilt along a still-rotating facing), and made a
+     * blast's knockback fire the player off along the old facing. Bomberman is
+     * an arcade game; you go where you press. So the band is gone and the
+     * radius guard is kept - now trivially satisfied, but it is the assertion
+     * that would catch a future attempt to reintroduce a wide turn on a small
+     * map. */
     const ArenaGeom* g = arena_geoms[0];
     double half_z = q_to_f(g->half_z);
-
-    /* A 180 at top speed sweeps `turn_radius` laterally. If that approaches the
-     * arena's SHORT half-width the player cannot turn around mid-arena without
-     * eating a wall. Half of half_z leaves real clearance on both sides.
-     * At the authentic 4deg/frame this is 2.06u vs a 1.94u budget -> FAILS. */
     CHECK(m.turn_radius < half_z * 0.5,
           "turn radius %.3fu must stay under half the arena's short half-width "
           "(%.3fu, half_z=%.3f) or the arena is unturnable mid-field",
           m.turn_radius, half_z * 0.5, half_z);
-
-    /* Responsiveness band. Lower bound keeps the turn GRADUAL - the whole point
-     * of A1.3's bounded turn is visible momentum, not an instant snap. Upper
-     * bound keeps a 4-player bomb arena dodgeable. */
-    CHECK(m.turn180_ticks > 10,
-          "180 turn in %d ticks is effectively a snap - A1.3's bounded turn "
-          "exists to preserve momentum", m.turn180_ticks);
-    CHECK(m.turn180_ticks < 40,
-          "180 turn takes %d ticks (%.2fs) - too sluggish to dodge in a 4-player "
-          "arena", m.turn180_ticks, m.turn180_ticks / 60.0);
 
     if (!failures) { printf("ALL TUNE REPORT TESTS PASSED\n"); return 0; }
     printf("%d FAILURE(S)\n", failures); return 1;

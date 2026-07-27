@@ -1,4 +1,4 @@
-# TUNE_VERSION	11
+# TUNE_VERSION	12
 # TUNE_RUN_SPEED	618
 # TUNE_RUN_ACCEL	51
 # TUNE_RUN_FRICTION	122
@@ -11,9 +11,9 @@ ticks_to_90pct	11	ticks
 ramp_distance	0.822	u
 stop_distance	0.308	u
 stop_ticks	6	ticks
-turn180_ticks	30	ticks
-turn90_ticks	15	ticks
-turn_radius	1.349	u
+turn180_ticks	1	ticks
+turn90_ticks	1	ticks
+turn_radius	0.151	u
 jump_apex	2.119	u
 jump_airtime	31	ticks
 runjump_distance	4.828	u

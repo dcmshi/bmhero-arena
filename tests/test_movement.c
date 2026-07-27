@@ -44,17 +44,23 @@ static int ticks_to_turn(int sx, int sy, uint16_t start_yaw, int wx, int wy) {
     return -1;
 }
 
-static void test_turn_is_gradual(void) {
-    /* 180-degree flip from facing +Z(0x8000) to stick full-up(-Z, yaw 0).
-     * NOTE: sy=-31 here (not +31) — verified against the sim's own
-     * iatan2(Q(ix),Q(-iy)) formula: iy=+31 resolves to target 0x8000,
-     * identical to start_yaw (no turn at all, degenerate test); iy=-31
-     * resolves to target 0x0000, the genuine 180deg reversal this test
-     * is meant to exercise. */
-    int t = ticks_to_turn(0, -31, 0x8000, 0, +31);   /* warm up facing +Z first */
-    int expect = 0x8000 / TUNE_TURN_RATE;
-    CHECK(t > 1, "a turn AT SPEED must be gradual, not instant (got %d ticks)", t);
-    CHECK(t >= expect-2 && t <= expect+2, "180deg turn took %d ticks, expected ~%d", t, expect);
+static void test_turn_is_immediate(void) {
+    /* v12 DESIGN REVERSAL. This test used to assert the opposite - that a
+     * 180-degree flip took ~0x8000/TUNE_TURN_RATE ticks - and that was correct
+     * for A1.3's decomp-authentic gradual turn.
+     *
+     * Feel testing overruled it. In an arena the bounded sweep makes every
+     * direction change ARC, because velocity is rebuilt along a facing that is
+     * still rotating; it also meant a blast's knockback got re-projected along
+     * the old facing while it swung round. Bomberman is an arcade game - you go
+     * where you press. TUNE_TURN_SNAP_SPEED now sits above top speed so the
+     * facing always snaps.
+     *
+     * Replaced rather than deleted, so the CURRENT decision is the one guarded.
+     * Lowering TUNE_TURN_SNAP_SPEED below TUNE_RUN_SPEED restores the sweep, and
+     * this test is what will fail first if that happens by accident. */
+    int t = ticks_to_turn(0, -31, 0x8000, 0, +31);   /* warmed up facing +Z */
+    CHECK(t == 1, "a 180 at speed must SNAP in one tick (took %d)", t);
 }
 
 /* Full-forward hold: measure steady-state speed and ticks to reach 90% of it.
@@ -118,7 +124,7 @@ static void test_jump_arc(void) {
 }
 
 int main(void){
-    test_turn_is_gradual();
+    test_turn_is_immediate();
     test_top_speed_and_accel();
     test_jump_arc();
     if(!failures){ printf("ALL MOVEMENT TESTS PASSED\n"); return 0; }

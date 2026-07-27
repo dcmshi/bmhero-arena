@@ -298,7 +298,21 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
     /* state upkeep */
     if (p->state == PSTATE_TUMBLE) {
         if (p->timer > 0) p->timer--;
-        if (p->timer == 0 && on_ground(p)) p->state = PSTATE_IDLE;
+        if (p->timer == 0 && on_ground(p)) {
+            p->state = PSTATE_IDLE;
+            /* Drop the knockback velocity on the way out of TUMBLE.
+             *
+             * The speed model takes its scalar from the CURRENT velocity's
+             * magnitude and re-projects it along facing. Leaving TUMBLE with the
+             * blast's velocity still in vel therefore LAUNDERS the knockback
+             * impulse into run speed, pointing wherever the player happened to be
+             * facing - so being blown up sent you sprinting off in the wrong
+             * direction for half a second before friction bled it off. Reported
+             * from the 2026-07-27 feel test as "blowing self up seems to reverse
+             * run direction for a while". You land, you stop. */
+            p->vel.x = 0;
+            p->vel.z = 0;
+        }
     } else if (p->state == PSTATE_JUMP && on_ground(p)) {
         p->state = PSTATE_IDLE;
     } else if (p->state == PSTATE_IDLE || p->state == PSTATE_RUN) {

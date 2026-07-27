@@ -71,19 +71,25 @@
                                          * gameplay choice, not a correction. FEEL knob. */
 #endif
 
-/* Below this speed a direction change SNAPS the facing instead of sweeping it
- * at TUNE_TURN_RATE. ~13% of top speed - i.e. "not really moving", about one
- * friction tick above a standstill (stop_ticks is 6).
+/* Below this speed a direction change SNAPS the facing instead of sweeping it at
+ * TUNE_TURN_RATE. Set ABOVE top speed, so in practice the turn ALWAYS snaps.
  *
- * Measured, not guessed: with the fixed camera the game's own moveAngle can be
- * read per frame, and on a stop-then-reverse it SNAPS in ONE frame while the
- * sim swept for 30 (fork probe mode 9, 2026-07-27). The decomp says the same -
- * the real walker's turn is per-action-state and several states snap instantly
- * (docs/bmhero-player-movement-re.md ## Turn). Speed is the closest handle the
- * sim has to those states: with no momentum there is nothing to conserve.
- * Set to 0 to restore the old always-sweep behaviour. */
+ * v12 (2026-07-27): this is a deliberate DESIGN REVERSAL, made on feel-test
+ * evidence. A1.3 transcribed the campaign walker's gradual bounded turn from the
+ * decomp, and it is authentic - but in an arena it means every direction change
+ * arcs, because velocity is rebuilt along the (still-rotating) facing. Two
+ * separate feel-test reports traced back to it:
+ *   - "drift on turning still present, can we remove"
+ *   - "blowing self up seems to reverse run direction for a while" (the knockback
+ *     speed got re-projected along the OLD facing while it swung round)
+ * Bomberman is an arcade game; you go where you press. Authenticity to the
+ * campaign walker is the wrong master here.
+ *
+ * TUNE_TURN_RATE is NOT dead - it is the knob that brings gradual turning back.
+ * Lower this threshold below TUNE_RUN_SPEED and the bounded sweep returns for
+ * anything faster, exactly as in v9-v11. */
 #ifndef TUNE_TURN_SNAP_SPEED
-#define TUNE_TURN_SNAP_SPEED Q(0.020)
+#define TUNE_TURN_SNAP_SPEED Q(99.0)
 #endif
 
 /* -- bombs -- TODO(feel): calibrate against decomp bmhero src/code/69AA0.c
@@ -183,7 +189,18 @@
 
 /* Bump when any value changes; folded into the session version hash. */
 #ifndef TUNE_VERSION
-#define TUNE_VERSION         11     /* 2026-07-27: (v11) TUNE_START_HP 2 -> 4 so the reused
+#define TUNE_VERSION         12     /* 2026-07-27: (v12) TWO more feel-test fixes.
+                                     * (1) TUNE_TURN_SNAP_SPEED raised above top speed, so
+                                     * the facing ALWAYS snaps - a deliberate reversal of
+                                     * A1.3's decomp-authentic gradual turn, because in an
+                                     * arena it made every direction change arc ("drift on
+                                     * turning still present, can we remove").
+                                     * (2) leaving PSTATE_TUMBLE now clears horizontal
+                                     * velocity: the speed model takes its scalar from the
+                                     * CURRENT velocity, so the blast's knockback was being
+                                     * laundered into run speed along the old facing
+                                     * ("blowing self up seems to reverse run direction").
+                                     * 2026-07-27: (v11) TUNE_START_HP 2 -> 4 so the reused
                                      * Hero HUD's 4 health slots (gMaxHealth, hard-coded 4
                                      * in the game) map 1:1 onto sim HP - no scaling, no
                                      * half-bars. Rounds last longer as a result.

@@ -145,34 +145,67 @@ static void test_turn_snaps_from_standstill(void) {
           "(off by %d BAM, one sweep step is %d)", err, (int)TUNE_TURN_RATE);
 }
 
-static void test_turn_still_sweeps_at_speed(void) {
-    /* At speed the bounded sweep must survive: it is what makes turning
-     * redirect momentum instead of teleporting the facing, and the 6deg/frame
-     * rate was feel-confirmed on 2026-07-27. */
+static void test_turn_snaps_at_speed_too(void) {
+    /* v12 DESIGN REVERSAL, on feel-test evidence: the facing now snaps at ANY
+     * speed, not just from rest.
+     *
+     * v9 asserted the opposite here - that a moving turn stayed BOUNDED to
+     * TUNE_TURN_RATE - and that was the right test for the decision at the time
+     * (A1.3's decomp-authentic gradual turn). The decision changed: in an arena
+     * the bounded sweep made every direction change arc, because velocity is
+     * rebuilt along a facing that is still rotating. This test is REPLACED, not
+     * deleted, so the new decision is the one under guard. */
     ArenaState s;
     arena_init(&s, 0, 4, 0xBEEF);
     run(&s, NEUTRAL, TUNE_COUNTDOWN_TICKS + 1);
 
     run(&s, arena_input_pack(31, 0, 0, 0, 0), 60);      /* get up to speed */
-    CHECK(qlen2(s.players[0].vel.x, s.players[0].vel.z) > TUNE_TURN_SNAP_SPEED,
+    CHECK(qlen2(s.players[0].vel.x, s.players[0].vel.z) > Q(0.05),
           "player is genuinely moving before the reversal");
 
-    uint16_t before = s.players[0].yaw;
     run(&s, arena_input_pack(-31, 0, 0, 0, 0), 1);      /* reverse the stick */
-    int16_t step = (int16_t)(s.players[0].yaw - before);
-    if (step < 0) step = (int16_t)-step;
-    CHECK(step <= (int16_t)TUNE_TURN_RATE,
-          "a moving turn is still BOUNDED to TUNE_TURN_RATE (stepped %d, max %d)",
-          step, (int)TUNE_TURN_RATE);
-    CHECK(step > 0, "a moving turn still turns");
+    int16_t err = (int16_t)(s.players[0].yaw - (uint16_t)0xC000);   /* -X is 270deg */
+    if (err < 0) err = (int16_t)-err;
+    CHECK(err < (int16_t)TUNE_TURN_RATE,
+          "a reversal AT SPEED snaps in one tick (off by %d BAM)", err);
 }
 
-static void test_snap_threshold_is_below_top_speed(void) {
-    /* If the snap threshold ever crept up to normal running speed, every turn
-     * would snap and the gradual-turn model would silently vanish. */
-    CHECK(TUNE_TURN_SNAP_SPEED < TUNE_RUN_SPEED / 4,
-          "snap threshold (%d) must stay well under top speed (%d) or the "
-          "bounded turn stops existing", (int)TUNE_TURN_SNAP_SPEED, (int)TUNE_RUN_SPEED);
+static void test_snap_threshold_covers_top_speed(void) {
+    /* The threshold must stay ABOVE top speed or gradual turning silently
+     * returns and the arc comes back with it. Lowering it below TUNE_RUN_SPEED
+     * is the documented way to restore the v9-v11 bounded sweep on purpose. */
+    CHECK(TUNE_TURN_SNAP_SPEED > TUNE_RUN_SPEED,
+          "snap threshold (%d) must exceed top speed (%d), or turns start "
+          "sweeping again and direction changes arc",
+          (int)TUNE_TURN_SNAP_SPEED, (int)TUNE_RUN_SPEED);
+}
+
+static void test_tumble_exit_drops_knockback(void) {
+    /* Leaving TUMBLE must not carry the blast's velocity out with it.
+     *
+     * The speed model takes its scalar from the CURRENT velocity magnitude and
+     * re-projects it along facing, so knockback left in vel gets LAUNDERED into
+     * run speed pointing wherever the player faced - "blowing self up seems to
+     * reverse run direction for a while". */
+    ArenaState s;
+    arena_init(&s, 0, 4, 0xBEEF);
+    run(&s, NEUTRAL, TUNE_COUNTDOWN_TICKS + 1);
+
+    /* Put player 0 into a tumble carrying a large horizontal velocity, exactly
+     * as a blast would. */
+    s.players[0].state = PSTATE_TUMBLE;
+    s.players[0].timer = TUNE_TUMBLE_TICKS;
+    s.players[0].vel.x = TUNE_KNOCKBACK;
+    s.players[0].vel.z = 0;
+    s.players[0].pos.y = 0;
+
+    run(&s, NEUTRAL, TUNE_TUMBLE_TICKS + 4);            /* ride it out, no input */
+    CHECK(s.players[0].state != PSTATE_TUMBLE, "tumble ended (state=%d)",
+          s.players[0].state);
+    q32 sp = qlen2(s.players[0].vel.x, s.players[0].vel.z);
+    CHECK(sp == 0,
+          "horizontal velocity is dropped on leaving TUMBLE, so knockback is not "
+          "laundered into run speed (speed=%d)", (int)sp);
 }
 
 int main(void) {
@@ -181,8 +214,9 @@ int main(void) {
     test_input_works_again_after_restart();
     test_match_end_stops_restarting();
     test_turn_snaps_from_standstill();
-    test_turn_still_sweeps_at_speed();
-    test_snap_threshold_is_below_top_speed();
+    test_turn_snaps_at_speed_too();
+    test_snap_threshold_covers_top_speed();
+    test_tumble_exit_drops_knockback();
 
     if (failures == 0) { printf("ALL ROUND/TURN TESTS PASSED\n"); return 0; }
     printf("%d FAILURES\n", failures);
