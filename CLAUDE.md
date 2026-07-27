@@ -22,6 +22,28 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
 > done. RE detail is in integration notes **§8.14** (camera + RE tooling) and
 > **§8.15** (floor measurement + the anchor bug).
 
+**ACTION POSES FIXED — set **41** (was 29), kick **32** (2026-07-27, §8.22).**
+Q played a throw because 29 was derived from the state machine and never looked
+at: the harness gate only asserted *"index 29 is playing"*, which is true no
+matter what 29 DRAWS. ***A gate that asserts your own assumption cannot fail*** —
+it stayed green through three feel tests reporting the wrong animation. Settled by
+**rendering the asset table**: `tools/anim-contactsheet.ps1` (fork) sweeps all 53
+entries of `D_80115808` and saves 106 labelled PNGs named from the game's own
+`[animsweep]` report; the user identified set=41/42, kick=32/33 by eye in a minute.
+**§8.5c's "kick has NO player animation (definitive)" is WRONG** — the reasoning
+was sound (the walk-in kick IS 100% bomb-side; `69AA0.c` has zero anim calls) but
+it leapt from *no code path plays one* to *none exists*. ***A call-graph search
+answers "is this used?", never "does this exist?"*** — for an ASSET, enumerate the
+table and look. Both edges are pure reads of sim state (set = bomb `FREE→SETTLED`
+w/ `owner`; kick = `SETTLED→SLIDING` w/ `bounced-1`), so **no sim change, hash
+`ff22fa4b` holds**; `test_bomb_mechanics` now pins the `bounced == kicker+1`
+encoding the bridge depends on. One shared 24-frame pose window
+(`arena_export_pose_anim` → index or -1) replaces the set-only path — every action
+pose must be HELD anyway (§8.18). Gated on the shipped binary: `-AnimProbe` →
+`[animw] +12 idx=41`, new `-Mode 10` → `[kick] pose idx=32`, 10/10 soak, CI green.
+*Open:* both poses are **STATIC** — holding means re-triggering, which restarts the
+clip (unchanged from §8.18; needs the game's own action state engaged).
+
 **A1.2g KEYSTONE DONE — sim geometry re-matched to the DIRECTLY MEASURED floor
 (`TUNE_VERSION` 7 → 8, hash `07fc6ade` → `4eacdd02`, 2026-07-26).** New **probe
 mode 7** measures the floor by asking the game's OWN ground query
