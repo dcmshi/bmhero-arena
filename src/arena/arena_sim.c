@@ -139,9 +139,31 @@ static void throw_bomb(ArenaState* s, int pi, ArenaBomb* b, uint16_t dir,
 static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g,
                         q32 wall_x, q32 wall_z) {
     ArenaPlayer* p = &s->players[pi];
-    if (p->state == PSTATE_DEAD) { p->last_input = in; return; }
-
     int gameplay = (s->phase == PHASE_PLAY || s->phase == PHASE_SUDDEN_DEATH);
+
+    if (p->state == PSTATE_DEAD) {
+        p->last_input = in;
+        /* TESTING ACCOMMODATION (TUNE_RESPAWN_TICKS; 0 restores proper
+         * last-man-standing). A round ends at `alive <= 1`, and the opponents
+         * are inert placeholders that never die - so a solo tester who died was
+         * stuck until the 2-minute round timer and then an unbounded sudden
+         * death. `timer` is free to reuse here precisely because a dead player
+         * runs none of the code below that would otherwise own it. */
+        if (gameplay && TUNE_RESPAWN_TICKS > 0) {
+            if (p->timer > 0) p->timer--;
+            if (p->timer == 0) {
+                p->pos   = g->spawns[pi];
+                p->vel.x = p->vel.y = p->vel.z = 0;
+                p->hp    = TUNE_START_HP;
+                p->state = PSTATE_IDLE;
+                p->yaw   = (uint16_t)(iatan2(-p->pos.x, -p->pos.z));
+                p->held_bomb = 0;
+                p->timer = TUNE_INVULN_TICKS;   /* brief grace on arrival */
+            }
+        }
+        return;
+    }
+
     ArenaInput prev = p->last_input;
 
     /* stick -> gradual turn toward the target heading, then a no-strafe
@@ -595,7 +617,10 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
                 hb->bounced = (uint8_t)(pi + 1);   /* grace vs the hit player */
                 p->held_bomb = 0;
             }
-            if (p->hp == 0) p->state = PSTATE_DEAD;
+            if (p->hp == 0) {
+                p->state = PSTATE_DEAD;
+                p->timer = TUNE_RESPAWN_TICKS;   /* 0 => never respawns */
+            }
         }
     }
 

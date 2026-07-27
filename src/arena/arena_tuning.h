@@ -187,9 +187,33 @@
 #define TUNE_ROUNDS_TO_WIN   3
 #endif
 
+/* Ticks a dead player waits before coming back. 0 = no respawn, i.e. proper
+ * last-man-standing.
+ *
+ * TESTING ACCOMMODATION (2026-07-27, requested during feel testing) - and it
+ * changes what the mode IS, from last-man-standing to deathmatch, so it is one
+ * constant and reverting is setting it to 0.
+ *
+ * The reason it is needed: a round ends at `alive <= 1`, and the three opponents
+ * are inert placeholders with no AI, so they never die. A solo tester who dies
+ * therefore waits out the 2-minute round timer and then an unbounded sudden
+ * death - effectively forever. Revisit when there are real opponents; with them,
+ * last-man-standing resolves on its own and this should go back to 0. */
+#ifndef TUNE_RESPAWN_TICKS
+#define TUNE_RESPAWN_TICKS   120        /* 2s */
+#endif
+
 /* Bump when any value changes; folded into the session version hash. */
 #ifndef TUNE_VERSION
-#define TUNE_VERSION         13     /* 2026-07-27: (v13) TUMBLE fixes, both from the feel
+#define TUNE_VERSION         14     /* 2026-07-27: (v14) TUNE_RESPAWN_TICKS = 120. A dead
+                                     * player now comes back after 2s. TESTING ACCOMMODATION,
+                                     * requested during feel testing: a round ends at
+                                     * `alive <= 1` and the opponents are inert placeholders
+                                     * that never die, so a solo tester who died waited out the
+                                     * 2-minute round timer and then an unbounded sudden death.
+                                     * Set to 0 to restore proper last-man-standing, which is
+                                     * the intended setting once real opponents exist.
+                                     * 2026-07-27: (v13) TUMBLE fixes, both from the feel
                                      * test report "upon hit it pushes me back and keeps the
                                      * running momentum in that direction".
                                      * (1) knockback now SKIDS - nothing else touches velocity

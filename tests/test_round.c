@@ -32,11 +32,19 @@ static void run(ArenaState* s, ArenaInput in0, int n) {
 }
 
 /* Kill everyone except player 0 by hand. Reaching for the bombs would make this
- * a bomb test; the round logic only cares that `alive` drops to 1. */
+ * a bomb test; the round logic only cares that `alive` drops to 1.
+ *
+ * The long timer holds them DEAD for the whole test. With TUNE_RESPAWN_TICKS > 0
+ * (the current TESTING ACCOMMODATION) a dead player comes back when its timer
+ * hits 0, which would keep `alive` at 4 and make the round-lifecycle assertions
+ * below untestable. These tests guard the PERMANENT last-man-standing behaviour
+ * - the one that returns the moment TUNE_RESPAWN_TICKS goes back to 0 - so they
+ * pin the players dead rather than being deleted for being inconvenient. */
 static void kill_all_but_zero(ArenaState* s) {
     for (int i = 1; i < s->num_players; i++) {
         s->players[i].hp = 0;
         s->players[i].state = PSTATE_DEAD;
+        s->players[i].timer = 30000;      /* long enough to outlast the test */
     }
 }
 
@@ -229,7 +237,43 @@ static void test_tumble_skids_and_ends_on_time(void) {
           "laundered into run speed");
 }
 
+static void test_respawn_returns_a_dead_player(void) {
+    /* TESTING ACCOMMODATION, guarded so it cannot rot: a dead player comes back
+     * at its spawn after TUNE_RESPAWN_TICKS, with health and control restored.
+     * Skipped entirely when respawn is off, which is the intended long-term
+     * setting once there are real opponents. */
+    if (TUNE_RESPAWN_TICKS == 0) return;
+
+    ArenaState s;
+    arena_init(&s, 0, 4, 0xBEEF);
+    run(&s, NEUTRAL, TUNE_COUNTDOWN_TICKS + 1);
+
+    /* move off spawn, then die */
+    run(&s, arena_input_pack(31, 0, 0, 0, 0), 40);
+    s.players[0].hp = 0;
+    s.players[0].state = PSTATE_DEAD;
+    s.players[0].timer = TUNE_RESPAWN_TICKS;
+
+    run(&s, NEUTRAL, TUNE_RESPAWN_TICKS - 1);
+    CHECK(s.players[0].state == PSTATE_DEAD,
+          "still dead just before the respawn is due (state=%d)", s.players[0].state);
+
+    run(&s, NEUTRAL, 3);
+    const ArenaGeom* g = arena_geoms[0];
+    CHECK(s.players[0].state != PSTATE_DEAD, "respawned (state=%d)", s.players[0].state);
+    CHECK(s.players[0].hp == TUNE_START_HP, "health restored (%d)", s.players[0].hp);
+    CHECK(s.players[0].pos.x == g->spawns[0].x && s.players[0].pos.z == g->spawns[0].z,
+          "respawned ON the spawn point");
+    CHECK(s.players[0].timer > 0, "arrives with brief invulnerability (timer=%d)",
+          s.players[0].timer);
+
+    Vec3q before = s.players[0].pos;
+    run(&s, arena_input_pack(31, 0, 0, 0, 0), 20);
+    CHECK(s.players[0].pos.x != before.x, "responds to input after respawning");
+}
+
 int main(void) {
+    test_respawn_returns_a_dead_player();
     test_round_end_is_not_terminal();
     test_restart_respawns_everyone();
     test_input_works_again_after_restart();
