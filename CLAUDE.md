@@ -141,6 +141,12 @@ must stay under half the arena's short half-width, and a 180 must land in the
 10–40 tick band (gradual, but dodgeable). These **fail at 4°/frame**, so the
 decision is encoded in tests rather than a comment.
 
+**SHIPPED TO BOTH DEFAULT BRANCHES (2026-07-27).** Fork `master` @ **`7302005`**
+carries A1.5 + the A1.2g geometry/anchor fix, submodule @ `50e5dad`
+(TUNE_VERSION 8, hash `4eacdd02`). Verified on the merged tree: full patch
+rebuild + 5/5 soak + anim gate + cam tests. `feature/a1.5-fixed-camera` is
+retired — **work from `master`**. (Earlier note, 2026-07-26, below.)
+
 **SHIPPED TO BOTH DEFAULT BRANCHES (2026-07-26).** Canonical `main` @ `73402a3`
 (both workflows green). **Fork `master` @ `cacaaa4`** — note the fork's default
 is `master`, not `main`. Master had been stranded at **A1.2a**; it now carries
