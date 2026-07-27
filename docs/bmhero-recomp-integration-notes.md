@@ -1110,3 +1110,98 @@ See `docs/renderdoc-capture-reference.md` for the qrenderdoc scripting quirks
 F12 needs foreground focus; pass paths via the environment; `__file__` undefined
 and `argv[0]` unwritable; GUI app so log to a file; seek to end-of-frame before
 saving the backbuffer).
+
+---
+
+## §8.18 — The A1.4 "camera regression" was never the camera; the set pose now holds (2026-07-27)
+
+**Outcome:** the A1.4 anim gate is **green**, with the camera on *and* off. The
+set pose holds for 24 frames instead of flickering for one. Nothing about the
+A1.5 camera was involved.
+
+### The wrong attribution, and how it happened
+
+The gate went red when the A1.5 camera landed, and an A/B seemed to pin it:
+camera off → PASS 2/2, camera on → FAIL 3/3. That A/B ran across **two different
+builds**. Rebuilding to flip a variable is exactly how a stale-exe measurement
+creeps in (a failed build leaves the previous binary, §8.14) — and more simply,
+two builds differ in more than the variable you meant to change.
+
+Fixed by adding **`ARENA_CAM_OFF=1`**, a runtime toggle for the camera stamp, so
+the A/B runs on **one binary**. Result: the gate fails **identically** either
+way. Not a camera regression.
+
+> **Rule:** A/B a variable at *runtime* on a single binary wherever possible.
+> If you must rebuild, you are comparing two builds, not one variable.
+
+### The real mechanism
+
+The 8-frame `[anim]` burst showed the symptom and nothing around it. A new
+`[animw]` window logs **every frame for 40 frames after a set edge**, with the
+player's `actionState`:
+
+```
++00 idx=29 frame=0 state=4     <- our set pose
++01 idx=3  frame=2 state=4     <- walker replaces it after ONE frame
++02 idx=3  frame=4 state=4
+```
+
+`func_80024744` (the walker) runs **before** our anim block every frame and
+re-asserts its own animation unconditionally. The tell is `idx=3 frame=2` on the
+very next frame: locomotion's counter **continued** rather than restarting, so
+the walker never stopped driving it — our pose was simply overwritten.
+
+So a one-shot trigger survives exactly one frame. **With the camera on or off,
+standing still or moving.** Two intermediate hypotheses were tested and refuted:
+
+| hypothesis | test | result |
+|---|---|---|
+| The A1.5 camera | `ARENA_CAM_OFF` toggle, one binary | identical failure both ways |
+| The probe set while still decelerating | widened the stand from 4 to 15 frames (`stop_ticks` is 6) | no change |
+
+This also **corrects §8.5c**, which said the pose "holds when standing" and is
+fragile only while moving. It was fragile always; standing never helped.
+
+### The fix: hold, not one-shot
+
+Native opens a 24-frame window on the set edge (`arena_set_hold`); the patch
+re-asserts the pose whenever the walker has taken it:
+
+```c
+if (set_edge || (arena_export_set_hold() && func_8001B880(0, 0) != 29))
+    func_8001C0EC(0, 0, 29, 1, (u32*)D_80115808);
+```
+
+The pose now holds for the full window and releases cleanly to locomotion.
+
+### The gate was asserting something impossible
+
+`-Rising 'idx=29 frame=(\d+)'` meant *"the anim frame counter advanced"*. But
+holding requires re-triggering, and re-triggering **restarts** the anim — so the
+counter is pinned at 0 forever. **The counter can never advance with an
+overlay-style trigger**, camera or no camera. The gate was unachievable by
+construction, which is why it stayed red and why it invited a false explanation.
+
+The gate's *intent* was always "the pose appeared for a meaningful duration
+rather than flickering for one frame". `-AnimProbe` now asserts
+`[animw] +12 idx=29` — still showing 12 frames after the edge. That measures the
+intent directly and is what the implementation can honestly deliver.
+
+**This is a gate correction, not a weakening.** The old proxy was impossible; the
+new one is a stronger statement about what the player actually sees.
+
+### Still open
+
+The pose is **static** — held, not animated, because each re-trigger resets the
+frame counter. Real animation needs the game's own set/drop **action state**
+engaged so the walker plays the anim itself rather than being fought each frame.
+That is the "cleaner approach" §8.5c always pointed at, and it is now the only
+remaining A1.4 item.
+
+### The lesson (again)
+
+Two gates in two days were measuring the wrong thing: `test_throw_fixed_arc`
+measured residual facing instead of the arc (§8.15), and this one measured an
+unachievable frame counter instead of duration. **When a gate stays red, check
+what it actually asserts before hunting for what broke it** — and be just as
+willing to find the gate wrong as the code.

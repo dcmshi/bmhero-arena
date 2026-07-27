@@ -66,9 +66,21 @@ no keyboard, via qrenderdoc's embedded Python over target control.
 independent source is a hypothesis, not evidence.*** When a model and an
 instrument disagree repeatedly, suspect the instrument.
 
-**KNOWN RED (unchanged):** the A1.5 camera still regresses the A1.4 set-pose
-gate, with the **identical `[0,0]` signature** after the anchor fix — so the
-anchor was not its cause. Left failing deliberately.
+**A1.4 ANIM GATE — GREEN; it was NEVER the camera (2026-07-27).** The red gate had
+been attributed to A1.5 by an A/B run across **two builds**. New `ARENA_CAM_OFF=1`
+runtime toggle lets the A/B run on **one binary**: the gate failed **identically**
+with the camera on and off. Real mechanism, from a new `[animw]` per-frame window:
+`func_80024744` (the walker) runs BEFORE our anim block and re-asserts its own
+animation **every frame**, so a one-shot trigger survives exactly one frame —
+camera on or off, standing or moving (this **corrects §8.5c**, which claimed the
+pose holds while standing). Fixed by **holding**: a 24-frame window re-asserts the
+pose whenever the walker takes it. Also **the gate was asserting the impossible** —
+`-Rising` demanded an advancing frame counter, but holding requires re-triggering,
+which restarts the anim and pins the counter at 0 forever. `-AnimProbe` now asserts
+`[animw] +12 idx=29` (still showing 12 frames after the edge), which is the gate's
+actual intent. Gate green both ways; 5/5 soak. §8.18.
+***Still open:*** the pose is STATIC (held, not animated). Real animation needs the
+game's own set action state engaged so the walker plays it itself.
 
 **A1.5 FIXED CAMERA — works, on `feature/a1.5-fixed-camera` (fork), NOT merged
 (2026-07-26).** The Nitros rail camera swung yaw 58→178° and sat at pitch **20°**
@@ -107,9 +119,11 @@ fix) stops the visible fall. The real fix — re-matching sim geometry to the
 measured floor — is **the keystone open item**; it also gives the camera its
 true centre. Exit trigger / damage tiles / HUD are untouched.
 
-**KNOWN RED:** the A1.5 camera **regresses the A1.4 set-pose gate** (isolated by
-A/B: camera off → PASS 2/2, camera on → FAIL 3/3; mechanism unproven). The gate
-is deliberately left failing rather than weakened — it reports something true.
+**KNOWN RED — RESOLVED 2026-07-27, and the attribution was WRONG.** The A/B that
+blamed the camera (off → PASS 2/2, on → FAIL 3/3) ran across two builds; on a
+single binary with `ARENA_CAM_OFF` the gate fails identically either way. Cause
+was the walker re-asserting its anim every frame, plus a gate asserting an
+unachievable frame counter. See the A1.4 paragraph above and §8.18.
 
 **TURN RATE TUNED — `TUNE_VERSION` 6 → 7, hash `18fbf1bb` → `07fc6ade`
 (2026-07-26).** `TUNE_TURN_RATE` `0x02D8` (4.0°/frame, the authentic
