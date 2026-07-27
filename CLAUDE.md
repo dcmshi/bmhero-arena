@@ -16,7 +16,48 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
 
 > **RESUMING? READ `docs/HANDOFF-2026-07-26.md` FIRST.** It lists the open items
 > in priority order, the traps that cost time, and the one-time setup already
-> done. RE detail for the camera + floor work is in integration notes **§8.14**.
+> done. RE detail is in integration notes **§8.14** (camera + RE tooling) and
+> **§8.15** (floor measurement + the anchor bug).
+
+**A1.2g KEYSTONE DONE — sim geometry re-matched to the DIRECTLY MEASURED floor
+(`TUNE_VERSION` 7 → 8, hash `07fc6ade` → `4eacdd02`, 2026-07-26).** New **probe
+mode 7** measures the floor by asking the game's OWN ground query
+(`func_80078168`) on a grid, instead of walking a player and logging where it
+stopped — a walk measures *how far the player could go*, not *where the floor
+is*, and stalls at the first edge. One run, ~1s, no player movement. Result at
+level 15: **a filled 1900×1900 SQUARE** centred on Hero (0,0), flat at y=240, no
+holes or pillars; 50u and 10u grids agree exactly. So `half_x = half_z =
+Q(7.9167)` — **square**, not the v5 rectangle, whose "1900×900" was walk-derived
+with the player stopped by *the sim's own z wall* (the measurement confirmed the
+bound it was meant to check).
+**The ANCHOR was the bigger bug (§8.15):** the render frame was pinned to the
+player's spawn, putting the sim's arena centre at Hero **(906,422)** instead of
+(0,0) — the sim's x range mapped to **[-42,1854]** against a floor of
+[-950,950], so **over half the sim arena hung off the map**. That is the A1.2g
+fall. Now `hero = FLOOR_CENTRE + sim*scale` from measured constants, which also
+kills the per-run capture drift (`origin.z` was 0 one boot, 396 another).
+**§8.5a is now a TEST:** `tools/test_arena_cam.c` includes the *sim's*
+`arena_geom.h` and asserts sim-extent × scale == measured floor (it caught a
+stale submodule pin immediately). The floor guard now **warns** if it ever fires.
+Verified: guard never fires across a full arena sweep (new `-Absent` gate); sweep
+reaches |x|≤926, |z|≤786 all at ground height 240; 5/5 soak; gate green.
+`test_bomb_mechanics`'s fixed-arc test was **not isolating what it claimed** —
+spawn facing is "look at the arena centre", so with only 3 turn ticks the release
+tick was still TURNING and the test measured facing, not the arc. It now holds
+until the yaw settles and asserts both preconditions; the property does hold.
+
+**A1.5 CAMERA — `at` is NOT honoured at draw time (open).** An `ARENA_CAM_DIST`
+sweep **proved our gView write drives the picture** (zoom tracks it exactly) and
+the log confirms `wrote_at=(0,340,0)`, but **the rendered view is centred on the
+player**. So pitch/yaw/dist are honoured and `at` is not, somewhere between our
+stamp and the draw. A1.5 therefore works as a fixed-**orientation follow** camera
+— which still delivers its real goal (stable yaw ⇒ a held stick direction stops
+curving) but not static whole-arena framing. `ARENA_CAM_DIST` is now
+**env-overridable at runtime** (was a patch rebuild per trial); 1800 frames best.
+
+**KNOWN RED (unchanged):** the A1.5 camera still regresses the A1.4 set-pose
+gate, with the **identical `[0,0]` signature** after the anchor fix — so the
+anchor was not its cause. Left failing deliberately.
 
 **A1.5 FIXED CAMERA — works, on `feature/a1.5-fixed-camera` (fork), NOT merged
 (2026-07-26).** The Nitros rail camera swung yaw 58→178° and sat at pitch **20°**
@@ -41,7 +82,8 @@ design. **Note:** the decomp does NOT have `code_extra_0` decompiled — 182
 `GLOBAL_ASM` stubs — so the earlier hand-RE was justified; m2c just decompiles
 them on demand now. §8.14.
 
-**A1.2g — the fall is NOT the death path (diagnosis corrects a standing note).**
+**A1.2g — the fall is NOT the death path (diagnosis corrects a standing note;
+SUPERSEDED above — root cause was the render ANCHOR, now fixed).**
 `actionState` stays **4** while `Pos.y` jumps to 30000: that is the ground
 query's "no floor here" sentinel, i.e. the player walked off the floor POLYGON
 because the real floor is smaller than the sim's collidable bounds (**§8.5a

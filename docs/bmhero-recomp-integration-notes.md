@@ -789,3 +789,134 @@ N64Recomp regenerates `RecompiledPatches/`; an immediate retry always succeeds.
 `build.ps1` now retries once. **This matters more than it looks: a FAILED build
 leaves the PREVIOUS exe in place and the soak happily tests that stale binary.**
 It silently invalidated an A/B isolation run before it was caught.
+
+---
+
+## §8.15 — Measuring the arena floor directly (probe mode 7), and the anchor bug it exposed (2026-07-26)
+
+### The method: ask the geometry, don't walk it
+
+Every earlier "measurement" of the arena floor drove the player around and logged
+where it stopped. That measures **how far the player could go**, not **where the
+floor is** — and the two differ exactly when the sim's bounds are wrong, which is
+the case you are trying to detect. It also stalls: the first edge you find parks
+the player (the floor guard restores it), so one run yields one boundary point.
+
+The game already has the answer. `func_80078168(x, y, z)` (decomp
+`src/code/69AA0.c:205`) is the ground query. It is **pure position-driven** — a
+chain of five collision calls, no caller context, no object index — and it
+refreshes a small set of globals:
+
+```c
+sel = D_801776E0 & 1;     /* which of the two result slots holds the answer */
+h   = D_80177760[sel];    /* ground height there                            */
+```
+
+and the game's own test for *"there is no floor here"* is
+
+```c
+sel == 0 && h == -30000.0f      /* 69AA0.c:401 — the branch that leaves unkD4 unset */
+```
+
+Copy that rule verbatim rather than inventing a height threshold. `D_801776E0`
+and `D_80177760` are auto-named data symbols, so reach them by **address literal**
+(§8.2), not `extern`.
+
+**Probe mode 7** (`ARENA_AUTO_BATTLE=7`) walks a grid calling this. Native owns
+the cursor and the accumulator so the patch stays stateless (§8.2); the patch
+loops a literal 384 points/frame. It prints the extent, the ground-height range,
+an **ASCII occupancy map** (shape matters as much as extent — a bounding box is
+only the right model if the floor is a filled rectangle), and flags
+**edge-saturation** if a hit lands on the box border. Grid is env-tunable
+(`ARENA_RASTER_N`, `ARENA_RASTER_STEP`), so survey and edge-refinement are the
+same probe with no rebuild. It needs **no player movement**, so nothing can
+stall it, and it costs ~1 second.
+
+**Result for MAP_NITROS_1 (level 15).** 81×81 @ 50u (6,561 samples) and 201×201
+@ 10u (40,401 samples) agree **exactly**:
+
+```
+a filled SQUARE, x ∈ [-950, 950], z ∈ [-950, 950], flat at y = 240
+no holes, no pillars, no steps
+```
+
+At `g_scale` 120 that is half = 950/120 = **7.9167 sim units on both axes**. The
+v5 figure of "1900×900" was the walk-derived one: the player had been stopped by
+the sim's own z wall, so the measurement confirmed the very bound it was meant to
+check, and the arena was modelled a factor of two too narrow in z.
+
+> **Always log which map you measured.** The render routine runs in *every* level,
+> so `[capture]` fires wherever the draw gate happens to open — including the
+> stage-select map if the warp hasn't landed. `[capture]` and `[raster]` now carry
+> `gCurrentLevel`. A floor measurement that doesn't record its map is a trap; this
+> was a live worry until `level=15` proved it.
+
+### The bigger bug: the anchor, not the extent
+
+The raster reports **absolute** Hero coordinates, which made the real problem
+visible. From the same run:
+
+```
+[capture] origin(0, 240, 0)   ref_s(-7.55, -3.52)
+```
+
+`arena_puppet_capture` pinned the **player's spawn Pos** to the **sim's spawn**:
+
+```
+hero = origin + (sim - ref_s) * 120
+```
+
+So the sim's arena **centre** (0,0) landed at Hero **(906, 422)**, not (0,0), and
+the sim's x range mapped to Hero **[-42, 1854]** against a floor of [-950, 950].
+**Over half the sim arena hung over the edge.** That is the A1.2g "fall" — the
+player is driven off the floor polygon, the ground query returns its sentinel, and
+`Pos.y` parks at 30000 with `actionState` unchanged (§8.5a, not a death path).
+It also explains why the old walk probe only ever saw `x ∈ [0..353]`, and why
+raising `ARENA_CAM_DIST` pushed the arena *off-centre* rather than framing more.
+
+**Fix:** anchor on the measured floor, not on a spawn.
+
+```
+hero = FLOOR_CENTRE + sim * scale        (ref_s = 0, the sim's own centre)
+```
+
+This also removes the capture's per-run drift by construction — `origin.z` was
+logged as 0 on one boot and 396 on another, because the *player's spawn* varies.
+The floor does not.
+
+The measured constants live in `patches/arena_cam.h` (`ARENA_FLOOR_CX/CZ/Y/HALF`,
+`ARENA_RENDER_SCALE`) and are the single source of truth for **both** sides of
+§8.5a: the render anchor and the sim's `arena_geom.h` half-extents.
+
+### Encoding §8.5a as a test
+
+`tools/test_arena_cam.c` now `#include`s the **sim's** `arena_geom.h` from the
+submodule and asserts `sim half × scale == measured floor half` on both axes,
+that the arena is square, and that every spawn is inside the floor. The two sides
+live in different repos, so nothing but a test keeps them together — and it
+immediately caught a stale submodule pin. The floor guard also **warns loudly**
+the first time it fires now: since the anchor fix it must never fire, so silence
+would hide a regression in the very invariant this establishes.
+
+Verification that the fix landed: a full four-direction sweep reaches |x| ≤ 926,
+|z| ≤ 786, **all at ground height 240**, and the guard never fires (new
+`arena-soak.ps1 -Absent` gate). The ~18 units past the sim's own wall (908) is
+the game walker's step landing before our write overwrites it — still well inside
+the ±950 floor.
+
+### Still open: `at` is not honoured at draw time
+
+An `ARENA_CAM_DIST` sweep (1200 / 1800 / 2800 / 4000, now runtime-tunable via the
+env var — framing used to cost a patch rebuild per trial) **proved our gView write
+drives the picture**: zoom tracks the value exactly. And the probe confirms we
+leave `gView.at` at the measured floor centre (`wrote_at=(0,340,0)`).
+
+But the rendered view is centred on the **player**, not on that point, and the
+player's screen position drifts systematically as the distance changes. So
+**pitch, yaw and dist are honoured while `at` is not**, somewhere between our
+stamp and the draw. Until that is understood, A1.5 behaves as a
+fixed-**orientation follow** camera — which still delivers its actual goal (a
+stable yaw, so a held stick direction stops curving) but not a static
+whole-arena framing. Next step: sample `gView` inside the *draw* routine
+(`func_800821E0`) rather than the update routine, to see whether `at` is
+overwritten in between or simply unused by the projection.
