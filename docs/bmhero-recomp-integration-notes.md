@@ -1397,3 +1397,61 @@ it. If it reappears, the `[level]` logging will name the transition.
 The **HUD** — an RmlUi overlay per the design doc, *not* a patch of Hero's own
 HUD (which currently shows the campaign's health/score/bomb icons, meaningless in
 battle). That is a slice in its own right.
+
+---
+
+## §8.21 — A1.2g HUD: reuse Hero's own instead of an overlay (2026-07-27)
+
+The design doc called for an RmlUi overlay. **Reusing the game's in-level HUD is
+far cheaper and looks native** — the art, layout and draw already exist and
+already match the game's style. All they lacked was our numbers. No new UI code.
+
+### The HUD variables
+
+Cleanly named in the decomp (`76640.c` `func_80088134` sets the campaign's base
+stats), so no RE was needed beyond finding them:
+
+| variable | HUD element | driven with |
+|---|---|---|
+| `gHealthCount` / `gMaxHealth` | red bars, top-left | sim HP of player 0, clamped |
+| `gBombCount` | bomb icon, bottom-right | `3` |
+| `gFireCount` | fire icon, bottom-right | `3` |
+| `gGemCount` | gem count, bottom-left | `0` |
+| `gScore` | digits, top-right | `0` |
+
+**The bomb/fire counters count POWERUPS COLLECTED, and the HUD draws
+`count + 1`.** So `3` renders as **"4"** — the maximum, not an off-by-one. The
+cap is 3 (`21E10.c:366/374`). Battle has no powerups, so everyone is permanently
+fully kitted and showing max is honest rather than decorative.
+
+### Why TUNE_START_HP went 2 → 4 (v11)
+
+The game **hard-codes `gMaxHealth = 4`** and the HUD draws that many slots. A sim
+HP of 4 therefore maps **1:1** with no scaling and no half-bars. It is also a real
+gameplay change (rounds last longer), which is why it took a version bump rather
+than a quiet edit.
+
+### Rules observed
+
+- **Driven every frame**, so the HUD tracks the sim exactly — including across a
+  round restart, where a write-once approach would go stale.
+- **Battle only.** These are the campaign's own counters; writing them outside
+  battle would corrupt a real playthrough. The `if (arena_bridge_is_battle())`
+  guard is not optional.
+
+### Verified on screen
+
+4 lit health bars, score `00000`, gems `00`, bomb `4`, fire `4`, and the player
+standing clear of the corner damage pad (spawns are at ±660, hazard starts at
+750).
+
+### Still open
+
+Zeroing the score only **censors** it to `00000`. Genuinely hiding the field, or
+repurposing it per player (round wins was the suggestion), means touching the HUD
+**draw** rather than its inputs — a separate decision. Exports for `stocks_won`
+and the match phase are in place and unused, ready for whichever is chosen.
+
+A per-player HUD (four healths, one per bomber) is a bigger question: Hero's HUD
+is single-player by construction, so that is where an overlay would finally earn
+its keep.

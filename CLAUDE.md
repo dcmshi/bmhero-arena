@@ -49,6 +49,21 @@ spawn facing is "look at the arena centre", so with only 3 turn ticks the releas
 tick was still TURNING and the test measured facing, not the arc. It now holds
 until the yaw settles and asserts both preconditions; the property does hold.
 
+**A1.2g HUD DONE - by REUSING Hero's own, not an RmlUi overlay (section 8.21).**
+The art, layout and draw already exist and look native; they only lacked our
+numbers. Driven every frame, battle only: `gHealthCount` <- sim HP,
+`gBombCount`/`gFireCount` <- 3 (these count POWERUPS and the HUD draws count+1, so
+they render as **4** - the max), `gGemCount` <- 0, `gScore` <- 0.
+`TUNE_START_HP` 2 -> **4** (v11, hash `3d2f2f0e` -> `ac74a6a5`) because the game
+HARD-CODES `gMaxHealth = 4`, so sim HP maps 1:1 with no scaling or half-bars.
+Non-battle is untouched - these are the campaign's own counters.
+Verified on screen: 4 lit bars, score 00000, gems 00, bomb 4, fire 4, player clear
+of the corner pad. **A1.2g is complete.**
+*Open:* zeroing the score only CENSORS it to 00000 - hiding it, or repurposing it
+per player, means touching the HUD DRAW (exports for `stocks_won` / phase are in
+place, unused). A true per-player HUD is where an overlay would earn its keep,
+since Hero's HUD is single-player by construction.
+
 **A1.2g HAZARDS SUPPRESSED (2026-07-27, section 8.20).** The Nitros room's damage
 tiles no longer affect the player. Traced the chain end to end - `func_80086AD0`
 (76640.c:714) sets `D_8016E080` from the surface type (our corners are 0xF7 -> 1)
