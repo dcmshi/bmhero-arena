@@ -160,6 +160,13 @@ static void test_set_and_walkin_kick_wall(void) {
     run(&s, NEUTRAL, 1);                                 /* touch while moving -> kick */
     CHECK(s.bombs[bi].state == BSTATE_SLIDING,
           "walk-in kicks the bomb (state=%d)", s.bombs[bi].state);
+    /* The kicker's identity is published in `bounced` as idx+1. This is grace
+     * bookkeeping for the sim, but the render bridge reads it to know WHOSE kick
+     * animation to play - the SETTLED->SLIDING edge alone doesn't say who did it.
+     * Asserted here so a change to the grace encoding can't silently make the
+     * fork play a kick pose on the wrong bomber. */
+    CHECK(s.bombs[bi].bounced == 1,
+          "kicker published as bounced=idx+1 (got %d)", (int)s.bombs[bi].bounced);
     /* kicked +Z: slides into the +Z boundary wall and detonates on contact */
     run(&s, NEUTRAL, 60);
     CHECK(s.bombs[bi].state == BSTATE_FREE, "kicked bomb detonated at wall");

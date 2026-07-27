@@ -335,7 +335,7 @@ load window.** Loads verified stable since.
 `gObjects[slot].Rot.y` each frame after `func_80024744()`; same convention as
 player 0 (on-screen since A1.2a).
 
-### 8.5c Player action animations — A1.4 RE (set-bomb recovered; kick has no anim; 2026-07-24)
+### 8.5c Player action animations — A1.4 RE (set-bomb recovered; ~~kick has no anim~~ — see 8.22; 2026-07-24)
 
 **Goal:** play the game's own player action anims (set-bomb, kick) on `gPlayerObject`
 when the sim registers those events, and **auto-verify via the harness** (read back the
@@ -375,15 +375,20 @@ because the state↔index binding is read from machine-C, not visually confirmed
 read-back (below) is the objective gate — and the game's OWN walker sets 0x0E/anim 29 on a
 Z-press in-arena, so pressing set and reading `func_8001B880(0,0)` discovers/confirms it.
 
-**Kick has NO player animation (definitive).** Bomberman Hero offense is grab→charge→throw,
-not a walk-into kick. The walk-in kick is **100% bomb-side**: `func_8007AD60`
-(`69AA0.c:877-917`) does the bomb `0x24→0x27` slide (reads `gPlayerObject` for facing but
-NEVER writes it or calls the anim primitive). In the real game the player just keeps its
-locomotion anim while a bomb slides. `69AA0.c` contains **zero** `func_8001C0EC` calls.
-Options for the arena's kick feedback (decision open): (a) **no special pose** — keep
-locomotion (most authentic, recommended); (b) a **throw** anim as a "shove" stand-in
-(`code_extra_0` throw poses 34/36/38/39/42) — arm/upper-body lunge, not a leg kick;
-(c) the set/drop pose 29 as a stomp-down. There is no faithful kick to match.
+**~~Kick has NO player animation (definitive).~~ WRONG — kick poses exist at 32/33
+(corrected 2026-07-27, see 8.22).** The code reasoning below is still accurate and is
+worth keeping, because it shows exactly how the conclusion overreached: the walk-in kick
+is indeed **100% bomb-side** — `func_8007AD60` (`69AA0.c:877-917`) does the bomb
+`0x24→0x27` slide (reads `gPlayerObject` for facing but NEVER writes it or calls the anim
+primitive), and `69AA0.c` contains **zero** `func_8001C0EC` calls. All true. The error was
+the leap from *"no code path plays a kick anim"* to *"no kick anim exists"*. Unreferenced
+assets are still assets: `D_80115808` is a 53-entry table and nothing requires the shipped
+game to reach every entry. Flipping through all 53 rendered poses (8.22) found clear kick
+poses at **32/33**, which the search had ruled out on the strength of the call-graph alone.
+
+**The methodology lesson:** a call-graph search answers *"is this used?"*, never *"does
+this exist?"*. For an ASSET, enumerate the asset table and look. That is one run of a
+contact sheet, and it would have settled this in the original pass.
 
 **Read-back for auto-verify (getters resolve as functions in patches — no `D_80165290`
 deref needed).** With `slot = gObjects[0].Unk140[0]` (part 0 = body):
@@ -1455,3 +1460,79 @@ and the match phase are in place and unused, ready for whichever is chosen.
 A per-player HUD (four healths, one per bomber) is a bigger question: Hero's HUD
 is single-player by construction, so that is where an overlay would finally earn
 its keep.
+
+## §8.22 — Action poses identified by RENDERING the asset table (2026-07-27)
+
+**Result: set-bomb = 41 (was 29), kick = 32.** Both play on `gPlayerObject` when
+the sim registers the event, gated on screen (`arena-soak.ps1 -AnimProbe` for
+set, `-Mode 10 -Expect '\[kick\] pose idx=32'` for kick).
+
+### What went wrong with the code-only pass
+
+§8.5c derived set = 29 from the state machine (`code_extra_0` state `0x0E` →
+`func_80282E5C_code_extra_0` → `func_8001C0EC(0,0,29,...)`) and marked it MEDIUM
+pending a look. It was never looked at, because the harness gate only ever
+asserted *"index 29 is playing"* — which is true no matter what 29 draws. **A
+gate that asserts your own assumption cannot fail.** On screen 29 reads as a
+throw, which is why the user kept reporting the wrong pose while the gate stayed
+green.
+
+The kick call was worse: see the correction in §8.5c. A call-graph search says
+what is *used*, never what *exists*.
+
+### The tool: `tools/anim-contactsheet.ps1`
+
+One run produces 106 labelled PNGs in `tools/anims/` — two per index across all
+53 entries of `D_80115808`, named for the index the game itself reported:
+
+- `ARENA_ANIM_SWEEP=<ticks>` cycles every index in the render patch and logs
+  `[animsweep] now playing idx=N` as each starts.
+- The script polls that log and screenshots ~0.5 s and ~1.4 s in, so the file
+  name comes from **the game's own report**, not from counting elapsed time.
+  Two shots because a single frame of a motion is often ambiguous.
+- `-Pitch 30 -Dist 450` overrides the play camera (pitch 60 / dist 2800 is near
+  top-down — the user's "so zoomed out it's very hard to visually confirm").
+
+Identification is then a human flipping through images, which takes a minute and
+is not something a screenshot classifier should be trusted to do.
+
+### The mechanism: one pose window for both actions
+
+Both edges are detected **natively in the bridge** as pure reads of sim state —
+no gameplay change, sim hash untouched:
+
+| action | edge | actor |
+|---|---|---|
+| set  | bomb `FREE → SETTLED`   | `bombs[b].owner` |
+| kick | bomb `SETTLED → SLIDING` | `bombs[b].bounced - 1` |
+
+`bounced` is the sim's kicker-grace field and doubles as "who kicked it"; the
+state edge alone does not say. `tests/test_bomb_mechanics.c` now asserts that
+encoding so the fork can't silently animate the wrong bomber.
+
+The patch gets **one** number, `arena_export_pose_anim()` — the index to hold, or
+-1. It needs no edge of its own: per §8.18 the walker re-asserts its own anim
+every frame, so a one-shot trigger survives exactly one frame and every action
+pose has to be *held* regardless. Set and kick therefore share one window
+(24 frames) and one code path. `ARENA_SET_ANIM` / `ARENA_KICK_ANIM` override.
+
+### Still open: the poses are STATIC
+
+Both hold correctly but the frame counter stays pinned at 0 (`arena-log.ps1`
+reports `STATIC (set but never advanced)`), because holding means re-triggering
+whenever the walker steals the anim, and re-triggering restarts the clip. Real
+animation needs the game's own action state engaged so the walker plays the clip
+itself. Unchanged from §8.18 — the pose is now the *right* pose, still not moving.
+
+### The probe timing trap (`ARENA_AUTO_BATTLE=10`)
+
+The kick probe sets a bomb, walks clear (the setter is immune until they step
+clear), then walks back in. Two constraints, both found by measurement after the
+first attempt silently did nothing:
+
+- **The input poll counter runs ~45 ahead of the sim tick.** A set at poll 215
+  lands at tick ~175 and is dropped by the 180-tick countdown — visible as
+  `[earlybtn] t175..178` with no bomb ever appearing. Mode 4 had been getting
+  away with the same window by 3 ticks.
+- **`TUNE_FUSE_TICKS` is 150**, so the whole round trip must finish before the
+  bomb detonates underneath the player.
