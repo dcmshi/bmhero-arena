@@ -920,3 +920,80 @@ stable yaw, so a held stick direction stops curving) but not a static
 whole-arena framing. Next step: sample `gView` inside the *draw* routine
 (`func_800821E0`) rather than the update routine, to see whether `at` is
 overwritten in between or simply unused by the projection.
+
+---
+
+## §8.16 — A1.5 camera: the pose is correct; three framing hypotheses eliminated (2026-07-27)
+
+**Correcting §8.15's closing note.** It said `gView.at` was not honoured and the
+view followed the player. That was wrong, and it was wrong because it was inferred
+from eyeballed screenshots rather than measured.
+
+**Proof the pose IS honoured.** At `ARENA_CAM_DIST=400` the picture is a close-up
+of the arena *centre*, with the player — 1100 units away at its corner — nowhere
+in frame. That can only happen if `gView.at` drives the view. Separately, the
+distance sweep proves our write reaches the render: zoom tracks `ARENA_CAM_DIST`
+exactly. And the camera-follow code that *does* overwrite `at` (decomp
+`src/code/63F90.c`, `gView.at.x = gPlayerObject->Pos.x` in a dozen places,
+dispatched by `func_80076374`) is called **from inside `func_80024744`** — so our
+post-update stamp already wins, which the probe confirms (`wrote_at` and the next
+frame's entry sample both read `(0,340,0)`).
+
+### The measuring tool that changed the answer
+
+`tools/shot_measure.py` measures where the floor lands on screen in a
+`capture-game.ps1` PNG: coverage, centroid, bbox, and the player's pixel position.
+Pure stdlib (decodes PNG directly — no PIL). The classifier is derived from
+**sampled pixels**, not guessed: the Nitros floor is blue-grey (`b > g`, e.g.
+41,50,59) and the void is a green-cyan swirl (`g >= b`, e.g. 25,134,101) at every
+brightness, so one channel comparison separates them. The red HUD falls out for
+free. A first attempt using "dark pixels" silently classified the swirl's dark
+bands as floor and returned a full-screen bbox for every shot — worth remembering:
+**sample the actual pixels before writing a classifier.**
+
+This tool overturned two conclusions previously drawn by eye.
+
+### What is actually wrong, in numbers
+
+The floor covers only **13% of the viewport at dist 2400** and hugs the corner
+nearest the camera. Sweeping the camera target (`ARENA_CAM_AT_DX/_DZ`) further
++X/+Z keeps *increasing* coverage — 12.9% at offset 0, 28.8% at +475, 47.4% at
++950, still rising — while aiming −X/−Z yields **zero** floor pixels.
+
+So the **drawn** floor is offset from the **collision** floor that probe mode 7
+measured. The collision raster alone could not have revealed this; it takes a
+render-side measurement to see the two disagree.
+
+### Three hypotheses, each tested and eliminated
+
+| hypothesis | how tested | verdict |
+|---|---|---|
+| `gView.at` overwritten before the draw | dist-400 close-up | **No** — shows the centre, not the player |
+| level far clip plane | probe tag 9 logs `D_801779C8.raw` | **No** — MAP_NITROS_1 authors ZFAR **8000**; the floor's far corner is only ~2400 away |
+| level-chunk view culling | forced `recomp_get_render_chunk_radius()` 0→3→6→10 | **No** — coverage moved 12.9%→13.7% then saturated |
+
+Worth recording for its own sake: **ZFAR** is `D_801779C8.raw` (the debug overlay
+prints `ZFAR`), set per level from `gLevelInfo[level]->unk2C` (`56800.c:372`) and
+consumed by `guPerspective` (`71AA0.c:610`, FOV 50°, aspect 4:3, near 100).
+**Chunk culling** is `func_800663EC` (patched in `required_patches.c`, commented
+"do view culling for geometry level chunks"): a box of chunk cells around
+`gView.at`, sized by `D_80104C70[gDebugDispType][0..5]` plus the recomp's own
+`extended_level_chunk_rendering` config option.
+
+The chunk-radius override was **reverted** rather than left in on a dead
+hypothesis. The ZFAR override is kept as a guard for maps that *do* author a short
+plane, with a comment stating plainly that it was not the cause here.
+
+### Next step
+
+**RenderDoc** (installed). `renderdoccmd capture` launches the game hooked;
+`qrenderdoc --python <script>` scripts the analysis headlessly. One capture gives
+the real view matrix and the floor mesh's true world bounds — settling "where is
+the drawn floor" directly, instead of another hypothesis cycle. Note there is no
+`renderdoc.pyd` in the install, so analysis goes through `qrenderdoc --python`
+rather than a plain Python import.
+
+Bear in mind this is all on the **Nitros render stand-in**, which the roadmap
+replaces with a purpose-built arena. The sim matches the *collision* floor exactly
+(the floor guard never fires across a full sweep), so gameplay is consistent; the
+mismatch is with what is *drawn*.
