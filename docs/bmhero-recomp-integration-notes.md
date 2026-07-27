@@ -1205,3 +1205,112 @@ measured residual facing instead of the arc (§8.15), and this one measured an
 unachievable frame counter instead of duration. **When a gate stays red, check
 what it actually asserts before hunting for what broke it** — and be just as
 willing to find the gate wrong as the code.
+
+---
+
+## §8.19 — Feel-test bugs: inverted W/S, the permanent freeze, and the turn snap (2026-07-27)
+
+Four reports from the first real feel test. Three were bugs; one was a
+misunderstanding of mine that the user was right to push back on.
+
+### 1. W/S inverted (bridge fix)
+
+The two sides disagreed about which way is "up" on the Y axis:
+
+| | forward is |
+|---|---|
+| recomp | **positive** — W maps to `Y_AXIS_POS`, and `cur_y += Y_AXIS_POS - Y_AXIS_NEG` (`recompinput/src/profiles.cpp:397`) |
+| sim | **negative** — *"sy MUST be -31, not +31: `iatan2(Q(0),Q(-31))` resolves to 0x0000"* (`tune_probes.c`) |
+
+So W drove the sim to +Z, which the fixed camera (eye at +Z) renders as moving
+**down**. Negated in the **adapter**, not the sim: the sim's convention is
+canonical, tested, and folded into the pinned hash.
+
+**Facing was verified afterwards** rather than assumed, because the bridge copies
+the game's `moveAngle` into `Rot.y` while the game computes it from the *raw*
+stick — so the two could have disagreed. They don't: holding S gives sim yaw 180
+(+Z) and `moveAngle` 0, which in the game's convention `(sin θ, cos θ)` *is* +Z.
+The negation actually brought the sim into line with the game's own walker.
+
+### 2. "Stuck in place" — a permanent freeze, not the wall
+
+The first diagnosis was the arena wall (the player does pin at
+|z| = half_z − player_radius). That was **wrong as the cause of what the user hit**.
+
+`PHASE_ROUND_END` was **terminal**: it counted its timer down and then did
+nothing, while `gameplay` gates player input off in that phase. With no respawn
+for a dead player either (`player_tick` returns early on `PSTATE_DEAD`), **both**
+of these froze the player permanently:
+
+- dying to your own bomb, or
+- killing the three idle puppets → `alive <= 1` → the round "ends".
+
+Fixed in the sim (v9): rounds restart until `TUNE_ROUNDS_TO_WIN`, then the sim
+holds — ending the *match* is the session's call. `arena_init` and the restart
+share one `round_reset()`, so a restarted round can never be seeded differently
+from a fresh one.
+
+> **A frozen sim is still perfectly deterministic**, which is why the determinism
+> suite could never have caught this: it was checking that nothing changes.
+> `tests/test_round.c` covers it now, and was verified to FAIL against the
+> pre-fix sim (12 failures, including "player 0 responds to input after a round
+> restart").
+
+### 3. Turn drift — the user was right, I was wrong
+
+I first called this "by design" (no-strafe gradual turn). The user pushed back:
+stopping and running the other way shouldn't arc. **They were right**, and the
+game says so.
+
+With the fixed camera we can read the game's own `moveAngle` per frame (probe
+mode 9). On a stop-then-reverse:
+
+```
+f164  moveAngle=180.0   simYaw=  0.0
+f165  moveAngle=  0.0   simYaw=354.0    <- game SNAPS in one frame; sim starts sweeping
+f194  moveAngle=  0.0   simYaw=180.0    <- sim arrives 30 frames later
+```
+
+The decomp agrees, and I had quoted the line without reading it: the real
+walker's turn is **per-action-state**, and *"states 5/6/29/34 snap instantly (thr
+360)"* (`movement-re.md ## Turn`). The probe shows the player in states 29/30/31
+across exactly that manoeuvre.
+
+It was worse than a plain arc, because the bridge takes **facing from the game**
+(snapped) and **motion from the sim** (sweeping) — for half a second the model
+faced one way and slid the other.
+
+Fixed with `TUNE_TURN_SNAP_SPEED` (v9): below it the facing snaps, above it the
+bounded sweep is untouched. Speed is the closest handle the sim has to the game's
+action states — with no momentum there is nothing for a gradual turn to conserve.
+The feel-confirmed moving turn is preserved exactly (`turn180_ticks` 30,
+`turn_radius` 1.349 unchanged); what moved is `ramp_distance` 0.937 → 0.822 and
+`ticks_to_90pct` 12 → 11, i.e. the player now accelerates straight out of rest.
+
+### 4. "Teleported to the damage square" — not a hazard
+
+A1.2g had recorded the room's damage tiles as being *at the corners*, which is
+exactly where our spawns are, so this needed checking rather than dismissing.
+**Idled on the corner pad for 45 s: no damage, no death, no crash**; the sim
+stayed `alive=4` / IDLE at its spawn, and the game's actionState merely cycled
+1/29/30/31/36 (idle fidgets). They are the room's four **spawn** pads — our
+spawns coinciding with them is correct.
+
+The visible teleport is ours and is cosmetic: the game spawns the player at the
+floor centre, then the absolute drive engages after the ~30-frame draw-gate
+warmup and snaps them to the sim spawn, during the 3-second countdown.
+
+### The recurring lesson
+
+**Three tests in two weeks were measuring the wrong thing**, and each cost real
+debugging time before anyone questioned the test itself:
+
+| test | measured | should have measured |
+|---|---|---|
+| `test_throw_fixed_arc` | residual facing | the arc |
+| `-AnimProbe` (`-Rising`) | an unachievable frame counter | pose duration |
+| `ticks_to_turn` | a turn from a standstill | a turn **at speed** |
+
+Each looked fine until the behaviour around it changed. When a gate goes red, ask
+what it actually asserts *before* hunting for what broke — and be as willing to
+find the test wrong as the code.

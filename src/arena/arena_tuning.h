@@ -177,7 +177,14 @@
 
 /* Bump when any value changes; folded into the session version hash. */
 #ifndef TUNE_VERSION
-#define TUNE_VERSION         9      /* 2026-07-27: (v9) TWO fixes from the first real feel
+#define TUNE_VERSION         10     /* 2026-07-27: (v10) arena0 spawns pulled 6.5 -> 5.5 to
+                                     * clear the Nitros room's DAMAGE TILES (surface type
+                                     * 0xF7, 69AA0.c:411) which occupy |x|,|z| >= 750 Hero -
+                                     * the old spawns were 780 out, so every player spawned
+                                     * standing on one and took a hit + stun. Measured with
+                                     * the fork's surface-type raster; the sim does not model
+                                     * the tiles, so only playing could find it.
+                                     * 2026-07-27: (v9) TWO fixes from the first real feel
                                      * test. (1) PHASE_ROUND_END was TERMINAL - it counted
                                      * down and then did nothing, while `gameplay` gates input
                                      * off, so a finished round (or dying to your own bomb,

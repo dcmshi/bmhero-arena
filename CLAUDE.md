@@ -49,6 +49,28 @@ spawn facing is "look at the arena centre", so with only 3 turn ticks the releas
 tick was still TURNING and the test measured facing, not the arc. It now holds
 until the yaw settles and asserts both preconditions; the property does hold.
 
+**FEEL-TEST FIXES - `TUNE_VERSION` 8 -> 9, hash `4eacdd02` -> `7a6226c5`
+(2026-07-27).** The first real feel test produced four reports; three were bugs
+(section 8.19). **Turn rate 6 deg/frame CONFIRMED good** - that decision is settled.
+**(a) W/S were INVERTED** - the recomp maps W to `Y_AXIS_POS` (positive) while the
+sim wants forward NEGATIVE (`tune_probes.c`: *"sy MUST be -31"*). Negated in the
+ADAPTER, not the sim. Facing verified afterwards, not assumed.
+**(b) PERMANENT FREEZE** - `PHASE_ROUND_END` was terminal (counted down, then did
+nothing) and `gameplay` gates input off there; with no respawn either, dying to
+your own bomb OR killing the idle puppets froze the player for good. Rounds now
+restart. ***A frozen sim is still deterministic, which is why the determinism
+suite could never catch it*** - `tests/test_round.c` does, and was verified to
+FAIL against the pre-fix sim.
+**(c) TURN DRIFT - the user was right and I was wrong.** I called it "by design";
+measured against the GAME'S OWN `moveAngle` (probe mode 9), the real walker SNAPS
+180->0 in ONE frame on a stop-then-reverse where our sim swept for 30. The decomp
+had said so all along (*"states 5/6/29/34 snap instantly"*). New
+`TUNE_TURN_SNAP_SPEED`; the moving turn is untouched (`turn180_ticks` 30,
+`turn_radius` 1.349), `ramp_distance` 0.937 -> 0.822.
+**(d) Corner pads are NOT damage tiles** - 45 s idle on one: no damage, no death.
+They are the room's spawn pads; the visible teleport is our drive engaging after
+the draw-gate warmup (cosmetic, during the countdown).
+
 **A1.5 FIXED ARENA CAMERA — DONE (2026-07-27).** `ARENA_CAM_DIST` **2800** frames
 the whole 1900x1900 arena, centred, margin on every side. The camera code never
 needed fixing: **`tools/capture-game.ps1` was capturing only the TOP-LEFT QUARTER

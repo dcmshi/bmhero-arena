@@ -42,11 +42,23 @@ typedef struct {
  * modelled a factor of two too narrow in z. */
 static const ArenaGeom arena_nitros_standin = {
     Q(7.9167), Q(7.9167), NULL, 0,
-    /* Corner spawns, symmetric now that the arena is square: 1.42 units (~170
-     * Hero) in from each wall, so nobody starts jammed against two walls the way
-     * spawn 0 used to (which is why tune_probes has to recentre player 0). */
-    { { Q(-6.5), 0, Q(-6.5) }, { Q(6.5), 0, Q(6.5) },
-      { Q(-6.5), 0, Q( 6.5) }, { Q(6.5), 0, Q(-6.5) } },
+    /* Corner spawns, symmetric now that the arena is square, and pulled IN to
+     * +-5.5 (660 Hero) to clear the room's DAMAGE TILES.
+     *
+     * The Nitros room has hazard tiles - surface type 0xF7, which the game keys
+     * its damage flag off (bmhero 69AA0.c:411) - in four 250x250 corner blocks
+     * covering |x| >= 750 AND |z| >= 750 Hero. Measured directly with the
+     * fork's surface-type raster (probe mode 7, 2026-07-27). The old +-6.5
+     * spawns were 780 Hero out: INSIDE those blocks, so every player spawned
+     * standing on a damage tile and took a hit and a stun on arrival. The sim
+     * does not model the tiles, so nothing here could have caught it - it was
+     * found by playing.
+     *
+     * 5.5 leaves 0.75 units (90 Hero) of clearance, comfortably more than
+     * TUNE_PLAYER_RADIUS. Guarded by test_arena_cam.c in the fork, which checks
+     * the spawns against the measured hazard bound. */
+    { { Q(-5.5), 0, Q(-5.5) }, { Q(5.5), 0, Q(5.5) },
+      { Q(-5.5), 0, Q( 5.5) }, { Q(5.5), 0, Q(-5.5) } },
 };
 
 /* Map 1 — "classic": the original designed battle arena (12x12 square ring +
