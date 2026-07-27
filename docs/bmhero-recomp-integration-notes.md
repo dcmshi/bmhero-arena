@@ -997,3 +997,79 @@ Bear in mind this is all on the **Nitros render stand-in**, which the roadmap
 replaces with a purpose-built arena. The sim matches the *collision* floor exactly
 (the floor guard never fires across a full sweep), so gameplay is consistent; the
 mismatch is with what is *drawn*.
+
+---
+
+## §8.17 — The A1.5 camera was correct all along; the SCREENSHOT TOOL was lying (2026-07-27)
+
+**Outcome: A1.5 is done.** `ARENA_CAM_DIST` 2800 frames the whole 1900×1900 arena,
+centred, with margin on every side. Nothing about the camera code needed fixing.
+
+### What actually happened
+
+`tools/capture-game.ps1` was capturing **only the top-left quarter of the frame**,
+and had been for weeks.
+
+The window's backbuffer is **1600×900**. On a high-DPI display Windows reports
+`GetClientRect` to a **non-DPI-aware** process in *logical* pixels — 800×450. The
+script allocated an 800×450 bitmap and `PrintWindow` blitted the top-left 800×450
+of the real surface into it, **unscaled**. One-line fix: call
+`SetProcessDPIAware()` before `GetClientRect`.
+
+This was a *believable* lie, which is what made it expensive. The images showed
+real game content, correctly lit, animating, and they changed when the camera
+changed. What they didn't show was that the arena was centred — because a centred
+arena drifts out of the top-left quarter as the camera pulls back. Hence the
+symptom "the floor hugs the bottom-right corner and shrinks as `ARENA_CAM_DIST`
+grows", which is exactly what a correctly-centred arena looks like through that
+crop.
+
+**Cost: three wrong root causes**, each hypothesised, implemented and tested
+against those screenshots — `gView.at` being overwritten, the level's far clip
+plane, and level-chunk view culling. All three were real mechanisms, correctly
+RE'd, and irrelevant. Two conclusions written into these notes were wrong and have
+been corrected.
+
+### What settled it
+
+A **RenderDoc capture of the same session**, seconds apart from a PrintWindow
+screenshot. The screenshot showed a zoomed corner fragment; the capture showed the
+entire arena, framed and centred.
+
+Two independent confirmations from the capture, before even looking at the image:
+
+- **Depth.** Clip-space `w` is view-space depth. Our camera at pitch 60 / dist
+  2400 predicts `depth = 2486.6 − 0.5·z` for a floor point at world `z`; for the
+  measured collision floor `z ∈ [−950, 950]` that is `w ∈ [2011.6, 2961.6]`. The
+  capture reported **`w ∈ [2006.6, 2966.6]`** — a ~5-unit match.
+- **Width.** Clip-x extremes of ±1537/1553 correspond to world `x = ±950`.
+
+So the drawn floor *is* the collision floor, and the camera *was* where we set it.
+
+### Tooling now in the repo
+
+- `tools/rd-capture.ps1` — launch hooked, wait for the arena, trigger a capture,
+  optionally save the frame to PNG. **No keyboard involved**: `renderdoccmd` has
+  no "trigger capture" verb and F12 needs foreground focus, which a background
+  process cannot reliably take. Instead qrenderdoc's **embedded** Python connects
+  over target control (`EnumerateRemoteTargets` → `CreateTargetControl` →
+  `TriggerCapture`). No system Python or packages needed.
+- `tools/rd_trigger.py`, `rd_saveframe.py`, `rd_analyse.py`.
+- `tools/shot_measure.py` — floor coverage/centroid/bbox + player pixel position.
+
+Two traps worth keeping about scripting qrenderdoc:
+
+1. **Paths must go through the environment**, not argv. `qrenderdoc`'s usage is
+   `qrenderdoc [options] filename`, so an extra argument after `--python x.py` is
+   taken as a *capture to open* and never reaches the script.
+2. **The script cannot locate itself.** `__file__` is undefined in that embedded
+   interpreter, and `argv[0]` is `qrenderdoc.exe` under Program Files — not
+   writable, so a script that opens its log there dies at import with **no output
+   at all**, which looks identical to "the script never ran".
+
+### The lesson
+
+The screenshot tool had never been validated against ground truth. It was trusted
+for months because its output *looked* right. A measurement instrument that has
+never been checked against an independent source is a hypothesis, not evidence —
+and when a model and an instrument disagree repeatedly, suspect the instrument.

@@ -46,14 +46,22 @@ spawn facing is "look at the arena centre", so with only 3 turn ticks the releas
 tick was still TURNING and the test measured facing, not the arc. It now holds
 until the yaw settles and asserts both preconditions; the property does hold.
 
-**A1.5 CAMERA — `at` is NOT honoured at draw time (open).** An `ARENA_CAM_DIST`
-sweep **proved our gView write drives the picture** (zoom tracks it exactly) and
-the log confirms `wrote_at=(0,340,0)`, but **the rendered view is centred on the
-player**. So pitch/yaw/dist are honoured and `at` is not, somewhere between our
-stamp and the draw. A1.5 therefore works as a fixed-**orientation follow** camera
-— which still delivers its real goal (stable yaw ⇒ a held stick direction stops
-curving) but not static whole-arena framing. `ARENA_CAM_DIST` is now
-**env-overridable at runtime** (was a patch rebuild per trial); 1800 frames best.
+**A1.5 FIXED ARENA CAMERA — DONE (2026-07-27).** `ARENA_CAM_DIST` **2800** frames
+the whole 1900x1900 arena, centred, margin on every side. The camera code never
+needed fixing: **`tools/capture-game.ps1` was capturing only the TOP-LEFT QUARTER
+of the frame** (backbuffer is 1600x900; `GetClientRect` reports 800x450 to a
+non-DPI-aware process, so PrintWindow blitted a quarter unscaled). A centred arena
+drifts out of that crop as the camera pulls back — exactly the "floor hugs the
+corner and shrinks" symptom. One-line fix (`SetProcessDPIAware()`); §8.17.
+It cost **three wrong root causes** (at-overwrite, far clip plane, chunk culling),
+all real mechanisms, correctly RE'd, all irrelevant. **RenderDoc settled it in one
+capture**: clip-space depth `w in [2006.6, 2966.6]` vs `[2011.6, 2961.6]` predicted
+for the measured floor — so the drawn floor IS the collision floor and the camera
+WAS where we set it. New `tools/rd-capture.ps1` (+ `rd_*.py`) captures a frame with
+no keyboard, via qrenderdoc's embedded Python over target control.
+***Lesson: a measuring instrument that has never been checked against an
+independent source is a hypothesis, not evidence.*** When a model and an
+instrument disagree repeatedly, suspect the instrument.
 
 **KNOWN RED (unchanged):** the A1.5 camera still regresses the A1.4 set-pose
 gate, with the **identical `[0,0]` signature** after the anchor fix — so the
@@ -69,9 +77,13 @@ direction curved, which is what made feel-testing untrustworthy. Now a static
 **stamped twice per frame** (the game's camera update runs inside
 `func_80024744` and reverts it), and we must write **`eye`/`up` ourselves**
 (`func_8001994C`'s `D_8016E134` gate is closed here — caught because the picture
-was pixel-identical across a 2× `ARENA_CAM_DIST` change). Framing is not
-finished: `DIST` 2200 frames most of the floor, and `at` is anchored on the
-player spawn rather than the true floor centre.
+was pixel-identical across a 2× `ARENA_CAM_DIST` change).
+**SUPERSEDED (2026-07-27):** the "framing is not finished" note above is obsolete
+— framing is done at `DIST` 2800, and `at` now anchors on the *measured* floor
+centre. The "pixel-identical across a 2× DIST change" evidence was itself an
+artifact of the cropped-screenshot bug (§8.17); writing `eye`/`up` ourselves is
+kept because it works and is self-consistent, not because the gate was proven
+closed.
 
 **RE TOOLING — `tools/decomp-func.ps1` gives typed C for ANY undecompiled
 function in one command** (splat → `m2ctx` → m2c). Beats reading
