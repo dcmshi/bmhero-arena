@@ -15,12 +15,19 @@ BMHeroRecomp (N64Recomp static recompilation + RT64). Read these before any work
   screenshot disagrees with a calculation — see §8.17 for why that matters
 - `README.md` — this repo's layout, build, and the five invariants
 
-## Current status (2026-07-26)
+## Current status (2026-07-27)
 
-> **RESUMING? READ `docs/HANDOFF-2026-07-26.md` FIRST.** It lists the open items
+> **RESUMING? READ `docs/HANDOFF-2026-07-27.md` FIRST.** It lists the open items
 > in priority order, the traps that cost time, and the one-time setup already
-> done. RE detail is in integration notes **§8.14** (camera + RE tooling) and
-> **§8.15** (floor measurement + the anchor bug).
+> done. It supersedes `HANDOFF-2026-07-26.md`, which is kept only for the
+> A1.2g/A1.5 detail. RE detail is in integration notes **§8.14** (camera + RE
+> tooling), **§8.15** (floor measurement + the anchor bug), **§8.22** (action
+> poses).
+>
+> **State:** canonical `main` and fork `master` both pushed and green.
+> `TUNE_VERSION` **14**, hash **`ff22fa4b`**. **A1.2g and A1.5 are complete.**
+> The next thing is a feel-boot of everything since v11 — none of it is
+> feel-verified.
 
 **ACTION POSES FIXED — set **41** (was 29), kick **32** (2026-07-27, §8.22).**
 Q played a throw because 29 was derived from the state machine and never looked
@@ -757,10 +764,14 @@ changes, that must be an intentional gameplay change.
    native-correct raw pass-through, §8.11; func_map crash class fixed,
    §8.12); A1.2f done (boot-soak harness); **A1.3 done** (movement dynamics
    transcribed from the decomp — scalar-speed-along-facing, gradual turn,
-   real jump/gravity/terminal; sim-only, `TUNE_VERSION` 3, hash `5f500fcb`) →
-   next: player anims (set/kick feedback) + **A1.2g arena hardening**
-   (exit trigger, damage tiles) + HUD. Render writes into `gObjects`
-   entries from `ArenaState` (Q20.12 → Hero coords).
+   real jump/gravity/terminal; sim-only, `TUNE_VERSION` 3, hash `5f500fcb`);
+   **A1.2g DONE** (hazards suppressed, exit trigger not reproducible, HUD by
+   reusing Hero's own — §8.20/§8.21); **A1.4 DONE** (set pose 41 + kick pose 32,
+   both gated on screen — §8.22); **A1.5 DONE** (fixed camera, `DIST` 2800).
+   Render writes into `gObjects` entries from `ArenaState` (Q20.12 → Hero coords).
+   **A1 remaining, all polish:** the poses are STATIC (held, not animated);
+   no explosion visual; puppets 1–3 are still bomb placeholders (§8.5b); and
+   the arena is the Nitros render stand-in, not a purpose-built battle map.
    **Side task — arena-shell eval: DONE.** Warped to a Nitros boss room
    (`MAP_NITROS_1`) as the flat arena — direct-warp loads clean, boss suppressed
    via the pre-update sweep; `ARENA_WARP_MAP`=15.
