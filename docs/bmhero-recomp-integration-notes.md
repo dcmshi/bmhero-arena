@@ -1314,3 +1314,86 @@ debugging time before anyone questioned the test itself:
 Each looked fine until the behaviour around it changed. When a gate goes red, ask
 what it actually asserts *before* hunting for what broke — and be as willing to
 find the test wrong as the code.
+
+---
+
+## §8.20 — A1.2g: suppressing the room's hazards (2026-07-27)
+
+The Nitros room is a *render stand-in*. Its hazards belong to a boss fight, not to
+our battle ruleset — in battle the **sim owns every hit and every hit point**, and
+the game object is a puppet. Any damage the room lands on it is wrong by
+definition, and it is also a stability risk: the bypassed death path crashes
+(§8.9), so a room hazard is a route to a hard crash.
+
+### The damage chain, traced end to end
+
+Worth writing down, because finding the one right lever took the whole chain:
+
+```
+func_80086AD0                (decomp 76640.c:714)
+    reads the surface under gPlayerObject, sets D_8016E080 from its TYPE
+    0xFF -> 0 (none)   0xF8 -> 2   0xF7 -> 1   0xF5/0xD9 -> 3/4/5
+        |
+        v
+case 5/6 block inside func_80024744   (21E10.c:648)
+    non-zero code  ->  damage request in D_80177648
+        |
+        v
+the application, gated on exactly one flag:
+    if (!gDebugInvincibileFlag)       (21E10.c:670)
+```
+
+Our corner tiles are **0xF7 → code 1**, located exactly by the probe-7
+surface-type raster (§8.19).
+
+### The fix: one flag, not one patch per hazard
+
+`gDebugInvincibileFlag = arena_bridge_is_battle() ? 1 : 0;` each frame.
+
+It suppresses the whole class — the tiles and anything else the room throws —
+rather than us patching `func_80086AD0`, or the case 5/6 block, or each hazard
+type separately. It is the game's own debug facility, and its only other uses are
+the debug menu's display and toggle, so nothing else changes. Cleared outside
+battle so leaving a match for the campaign in the same process cannot leave the
+player invincible.
+
+### Verified, not assumed
+
+The interesting part. "I set a flag and nothing bad happened" proves nothing —
+the player might simply never have touched a tile. So log **`D_8016E080`**, the
+hazard code the game itself derives:
+
+> Four-direction sweep parks the player at (−926, −908), which is **on** a corner
+> tile. Result: **`hazard=1` on 22 of 29 samples**, with no damage, no stun, no
+> crash and no level change.
+
+The tile is still **detected**; only its damage is suppressed. That is the
+evidence — a non-zero hazard code with no consequence.
+
+### Exit trigger — not reproducible, and probably never a trigger
+
+Three independent checks:
+
+1. The full surface-type raster finds only `0xE1`, `0xE2`, `0xF7`, `0xFF` on the
+   floor. **None** of the transition surface types `76640.c` keys off (`0xF1`,
+   `0xED`, `0xEC`, `0xE8`, `0xD7`) exists anywhere on it.
+2. Two full sweeps with new `[level]` logging (gCurrentLevel + the next-level
+   request vars, logged **on change** and **before** the sample throttle, since a
+   transition is a single-frame event that a one-in-30 sample would miss):
+   `gCurrentLevel` stays **15** throughout.
+3. Non-actor `gObjects[14..77]` are already deactivated every frame by the
+   existing boss-suppression sweep.
+
+The probe run that used to end on the stage select almost certainly did so
+because of the **anchor bug** (§8.15), which drove the player to Hero x=1854 —
+far outside the ±950 floor and out of the arena entirely. With the anchor fixed
+and the sim's walls at 908, the player is confined well inside the floor.
+
+**Recorded as not-reproducible rather than fixed**, because no change was made for
+it. If it reappears, the `[level]` logging will name the transition.
+
+### Still open
+
+The **HUD** — an RmlUi overlay per the design doc, *not* a patch of Hero's own
+HUD (which currently shows the campaign's health/score/bomb icons, meaningless in
+battle). That is a slice in its own right.

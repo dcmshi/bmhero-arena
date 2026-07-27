@@ -49,6 +49,25 @@ spawn facing is "look at the arena centre", so with only 3 turn ticks the releas
 tick was still TURNING and the test measured facing, not the arc. It now holds
 until the yaw settles and asserts both preconditions; the property does hold.
 
+**A1.2g HAZARDS SUPPRESSED (2026-07-27, section 8.20).** The Nitros room's damage
+tiles no longer affect the player. Traced the chain end to end - `func_80086AD0`
+(76640.c:714) sets `D_8016E080` from the surface type (our corners are 0xF7 -> 1)
+-> the case 5/6 block in `func_80024744` turns that into a damage request ->
+applied unless **`gDebugInvincibileFlag`** (21E10.c:670). One named flag
+suppresses the whole class rather than a patch per hazard; set every frame in
+battle and CLEARED outside it. In battle the SIM owns every hit, so room damage is
+wrong by definition - and it was a crash route, since the bypassed death path
+crashes.
+***Verified, not assumed:*** logging `D_8016E080` shows the tile still DETECTED
+while its damage is suppressed - a sweep parks the player ON a corner tile and
+reports `hazard=1` on 22/29 samples with no damage, stun, crash or level change.
+**EXIT TRIGGER - not reproducible:** the full surface-type raster finds no
+transition surface type anywhere on the floor, two sweeps keep `gCurrentLevel` at
+15, and non-actor objects are already swept. The old stage-select ending was
+almost certainly the ANCHOR bug driving the player to Hero x=1854, off the map.
+Recorded as not-reproducible, not fixed - no change was made for it.
+**A1.2g remaining: the HUD** (RmlUi overlay, not a patch of Hero's HUD).
+
 **FEEL-TEST FIXES - `TUNE_VERSION` 8 -> 9, hash `4eacdd02` -> `7a6226c5`
 (2026-07-27).** The first real feel test produced four reports; three were bugs
 (section 8.19). **Turn rate 6 deg/frame CONFIRMED good** - that decision is settled.
