@@ -21,15 +21,32 @@ typedef struct {
  * To add a map: define a named `static const ArenaGeom` here + append &it to the
  * registry. Keep index 0 = the map the fork currently renders. */
 
-/* Map 0 — "nitros-standin" (2026-07-24): matched to the MAP_NITROS_1 render
- * stand-in. Measured floor ~1900x900 Hero @ g_scale 120 => half_x 7.9, half_z
- * 3.87 sim units; the player spawns near a corner so the spawns sit near the
- * corners (the render maps distance-to-walls, frozen at the spawn). NO pillars
- * (open floor). Extents + spawns are measurement-derived — tune by feel. */
+/* Map 0 — "nitros-standin" (2026-07-26): matched to the MAP_NITROS_1 render
+ * stand-in by DIRECT MEASUREMENT of the floor geometry, not by walking a player.
+ * Probe mode 7 asks the game's OWN ground query (func_80078168) on a grid and
+ * records where it reports floor; integration notes §8.15.
+ *
+ * Result: the floor is a filled SQUARE, 1900 x 1900 Hero units centred on Hero
+ * (0,0), flat at y=240 — no holes, no pillars, no steps. Two independent passes
+ * (50-unit and 10-unit grids; 6,561 and 40,401 samples) agree on the extent
+ * EXACTLY, so the ±950 edge is measured to within 10 Hero units, not inferred.
+ *
+ * At the render bridge's scale of 120 Hero units per sim unit, that is
+ * half = 950/120 = 7.9167 sim units on BOTH axes. collide_static already insets
+ * the player by TUNE_PLAYER_RADIUS, so these are the floor edge itself.
+ *
+ * This SUPERSEDES the v5 "~1900x900" figure. That one came from walking a player
+ * and logging where it stopped — which measures how far the player could GO, not
+ * where the floor IS. The player was stopped by the sim's own z wall, so the
+ * measurement confirmed the very bound it was meant to check, and the arena was
+ * modelled a factor of two too narrow in z. */
 static const ArenaGeom arena_nitros_standin = {
-    Q(7.9), Q(3.87), NULL, 0,
-    { { Q(-7.8), 0, Q(-3.8) }, { Q(7.7), 0, Q(3.8) },
-      { Q(-7.8), 0, Q( 3.8) }, { Q(7.7), 0, Q(-3.8) } },
+    Q(7.9167), Q(7.9167), NULL, 0,
+    /* Corner spawns, symmetric now that the arena is square: 1.42 units (~170
+     * Hero) in from each wall, so nobody starts jammed against two walls the way
+     * spawn 0 used to (which is why tune_probes has to recentre player 0). */
+    { { Q(-6.5), 0, Q(-6.5) }, { Q(6.5), 0, Q(6.5) },
+      { Q(-6.5), 0, Q( 6.5) }, { Q(6.5), 0, Q(-6.5) } },
 };
 
 /* Map 1 — "classic": the original designed battle arena (12x12 square ring +

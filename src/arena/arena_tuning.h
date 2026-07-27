@@ -162,7 +162,14 @@
 
 /* Bump when any value changes; folded into the session version hash. */
 #ifndef TUNE_VERSION
-#define TUNE_VERSION         7      /* 2026-07-26: (v7) TUNE_TURN_RATE 4deg -> 6deg/frame
+#define TUNE_VERSION         8      /* 2026-07-26: (v8) arena0 re-matched to the DIRECTLY MEASURED
+                                     * floor: a 1900x1900 Hero square, so half_x = half_z =
+                                     * Q(7.9167) — square, not the v5 rectangle. v5's "1900x900"
+                                     * came from walking a player, which measures how far the
+                                     * player could go, not where the floor is; probe mode 7 asks
+                                     * the game's own ground query directly (arena_geom.h,
+                                     * integration notes 8.15). Spawns re-cornered symmetrically.
+                                     * 2026-07-26: (v7) TUNE_TURN_RATE 4deg -> 6deg/frame
                                      * (0x02D8 -> 0x0444) — arena-fit tune: at 4deg a 180 at top
                                      * speed sweeps 53% of the arena's short half-width, so
                                      * mid-field turns ate a wall. Chosen from a measured sweep

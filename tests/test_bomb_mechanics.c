@@ -34,15 +34,29 @@ static q32 bomb_xz_dist(const ArenaBomb* b, Vec3q from) {
 static void test_throw_fixed_arc(void) {
     /* Decomp-verified (bmhero 69AA0.c): the throw is a fixed launch from
      * facing + constants — stick tilt at release must NOT change where the
-     * bomb lands. Both throws aim +X from spawn (-4.5,-4.5): ~10 clear
-     * units along z=-4.5. Player is stopped before release in both cases;
-     * the only difference is the stick state on the release tick. */
+     * bomb lands.
+     *
+     * The setup has to let the TURN CONVERGE first, or it doesn't isolate what
+     * it claims to. Spawn facing is "look at the arena centre" (arena_init), and
+     * the throw follows facing BY DESIGN, so while the player is still turning,
+     * a stick held on the release tick legitimately moves the bomb — by changing
+     * facing, not the arc. The old setup allowed only 3 turn ticks and so was
+     * really measuring residual turn; it went red the moment arena 0 became
+     * square in v8 and the spawn moved from ~64 degrees off +X to exactly 45.
+     *
+     * So: hold the facing input long enough for the yaw to settle, stop the
+     * player, then ASSERT both preconditions (same facing, and the release tick
+     * adds no turn) before comparing distances. */
     ArenaState s;
+    const ArenaInput HOLD_STOP = arena_input_pack(0, 0, 0, 1, 0);
+    const ArenaInput HOLD_FWD  = arena_input_pack(31, 0, 0, 1, 0);
+
     /* release with neutral stick */
     start2(&s);
-    run(&s, arena_input_pack(0, 0, 0, 1, 0), 5);      /* grab */
-    run(&s, arena_input_pack(31, 0, 0, 1, 0), 3);     /* face +X while holding */
-    run(&s, arena_input_pack(0, 0, 0, 1, 0), 30);     /* stop (friction) */
+    run(&s, HOLD_STOP, 5);       /* grab */
+    run(&s, HOLD_FWD, 30);       /* face +X while holding, until the turn settles */
+    run(&s, HOLD_STOP, 40);      /* stop (friction) */
+    uint16_t yaw_a = s.players[0].yaw;
     Vec3q origin_a = s.players[0].pos;
     run(&s, NEUTRAL, 120);                            /* release, fly, land */
     CHECK(s.bombs[0].state == BSTATE_SETTLED, "throw A settled");
@@ -50,15 +64,21 @@ static void test_throw_fixed_arc(void) {
 
     /* release with the stick held full forward */
     start2(&s);
-    run(&s, arena_input_pack(0, 0, 0, 1, 0), 5);
-    run(&s, arena_input_pack(31, 0, 0, 1, 0), 3);
-    run(&s, arena_input_pack(0, 0, 0, 1, 0), 30);
+    run(&s, HOLD_STOP, 5);
+    run(&s, HOLD_FWD, 30);
+    run(&s, HOLD_STOP, 40);
+    uint16_t yaw_b = s.players[0].yaw;
     Vec3q origin_b = s.players[0].pos;
     run(&s, arena_input_pack(31, 0, 0, 0, 0), 1);     /* release, stick full */
+    CHECK(s.players[0].yaw == yaw_b,
+          "precondition: turn has converged, so the release tick adds no turn "
+          "(yaw %u -> %u)", yaw_b, s.players[0].yaw);
     run(&s, NEUTRAL, 120);
     CHECK(s.bombs[0].state == BSTATE_SETTLED, "throw B settled");
     q32 dist_b = bomb_xz_dist(&s.bombs[0], origin_b);
 
+    CHECK(yaw_a == yaw_b, "precondition: both throws launch from the same facing "
+                          "(a=%u b=%u)", yaw_a, yaw_b);
     /* identical launch: stick input cannot alter the arc. Allow a few Q of
      * slack for the 1 walking tick before B's bomb leaves the hand. */
     CHECK(qabs(dist_a - dist_b) < Q(0.15),
