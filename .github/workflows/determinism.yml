@@ -41,7 +41,8 @@ jobs:
       - name: round lifecycle + turn snap tests
         shell: bash
         run: |
-          ${{ matrix.cc }} -std=c11 -Wall -Wextra -Werror ${{ matrix.opt }} \n            -o test_rnd src/arena/arena_sim.c tests/test_round.c
+          ${{ matrix.cc }} -std=c11 -Wall -Wextra -Werror ${{ matrix.opt }} \
+            -o test_rnd src/arena/arena_sim.c tests/test_round.c
           ./test_rnd
       - name: feel-metrics probe tests
         shell: bash
