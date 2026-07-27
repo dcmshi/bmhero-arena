@@ -180,32 +180,53 @@ static void test_snap_threshold_covers_top_speed(void) {
           (int)TUNE_TURN_SNAP_SPEED, (int)TUNE_RUN_SPEED);
 }
 
-static void test_tumble_exit_drops_knockback(void) {
-    /* Leaving TUMBLE must not carry the blast's velocity out with it.
+static void test_tumble_skids_and_ends_on_time(void) {
+    /* Two things a hit must do, both reported wrong from the 2026-07-27 feel
+     * test as "upon hit it pushes me back and keeps the running momentum".
      *
-     * The speed model takes its scalar from the CURRENT velocity magnitude and
-     * re-projects it along facing, so knockback left in vel gets LAUNDERED into
-     * run speed pointing wherever the player faced - "blowing self up seems to
-     * reverse run direction for a while". */
+     * 1. SKID, not glide. Nothing else touches velocity during TUMBLE, so the
+     *    knockback used to carry at CONSTANT speed for the whole stun -
+     *    measured at 4.8 units of travel on an arena of half-width 7.9.
+     * 2. Stun for TUMBLE_TICKS, not TUMBLE + INVULN. The damage code sets the
+     *    timer to the SUM and the exit waited for zero, so the player was
+     *    frozen for 90 ticks (1.5 s) rather than the intended 30.
+     *
+     * Set up exactly as the blast code does, or the test measures a path the
+     * game never takes. */
     ArenaState s;
     arena_init(&s, 0, 4, 0xBEEF);
     run(&s, NEUTRAL, TUNE_COUNTDOWN_TICKS + 1);
 
-    /* Put player 0 into a tumble carrying a large horizontal velocity, exactly
-     * as a blast would. */
-    s.players[0].state = PSTATE_TUMBLE;
-    s.players[0].timer = TUNE_TUMBLE_TICKS;
-    s.players[0].vel.x = TUNE_KNOCKBACK;
-    s.players[0].vel.z = 0;
-    s.players[0].pos.y = 0;
+    s.players[0].state  = PSTATE_TUMBLE;
+    s.players[0].timer  = (uint16_t)(TUNE_TUMBLE_TICKS + TUNE_INVULN_TICKS);
+    s.players[0].vel.x  = TUNE_KNOCKBACK;
+    s.players[0].vel.z  = 0;
+    s.players[0].pos.y  = 0;
+    q32 x0 = s.players[0].pos.x;
 
-    run(&s, NEUTRAL, TUNE_TUMBLE_TICKS + 4);            /* ride it out, no input */
-    CHECK(s.players[0].state != PSTATE_TUMBLE, "tumble ended (state=%d)",
-          s.players[0].state);
-    q32 sp = qlen2(s.players[0].vel.x, s.players[0].vel.z);
-    CHECK(sp == 0,
-          "horizontal velocity is dropped on leaving TUMBLE, so knockback is not "
-          "laundered into run speed (speed=%d)", (int)sp);
+    int ticks_stunned = 0;
+    for (int t = 0; t < TUNE_TUMBLE_TICKS + TUNE_INVULN_TICKS + 8; t++) {
+        run(&s, NEUTRAL, 1);
+        if (s.players[0].state == PSTATE_TUMBLE) ticks_stunned++;
+        else break;
+    }
+
+    CHECK(ticks_stunned <= TUNE_TUMBLE_TICKS + 2,
+          "stun lasts ~TUNE_TUMBLE_TICKS (%d), not TUMBLE+INVULN (%d) - stunned "
+          "for %d ticks", TUNE_TUMBLE_TICKS,
+          TUNE_TUMBLE_TICKS + TUNE_INVULN_TICKS, ticks_stunned);
+    CHECK(s.players[0].timer > 0,
+          "the REMAINDER of the timer stays as invulnerability (timer=%d)",
+          s.players[0].timer);
+
+    q32 slid = s.players[0].pos.x - x0;
+    if (slid < 0) slid = -slid;
+    CHECK(slid < Q(1.0),
+          "knockback SKIDS to a stop rather than gliding: slid %d Q (%.2f u), "
+          "budget 1.0u", (int)slid, (double)slid / 4096.0);
+    CHECK(qlen2(s.players[0].vel.x, s.players[0].vel.z) == 0,
+          "horizontal velocity is gone once the stun ends, so knockback is not "
+          "laundered into run speed");
 }
 
 int main(void) {
@@ -216,7 +237,7 @@ int main(void) {
     test_turn_snaps_from_standstill();
     test_turn_snaps_at_speed_too();
     test_snap_threshold_covers_top_speed();
-    test_tumble_exit_drops_knockback();
+    test_tumble_skids_and_ends_on_time();
 
     if (failures == 0) { printf("ALL ROUND/TURN TESTS PASSED\n"); return 0; }
     printf("%d FAILURES\n", failures);

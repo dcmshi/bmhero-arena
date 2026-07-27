@@ -298,7 +298,29 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
     /* state upkeep */
     if (p->state == PSTATE_TUMBLE) {
         if (p->timer > 0) p->timer--;
-        if (p->timer == 0 && on_ground(p)) {
+        /* SKID, don't glide. Nothing else touches velocity during TUMBLE (the
+         * whole movement block is skipped), so the knockback used to carry at a
+         * CONSTANT speed for the entire stun - measured at 4.8 units of travel,
+         * on an arena whose half-width is 7.9. Reported from the feel test as
+         * "upon hit it pushes me back and keeps the running momentum in that
+         * direction". Bleed it off at the normal friction rate instead, so a hit
+         * shoves you and you skid to a stop. */
+        if (on_ground(p)) {
+            q32 sp = qlen2(p->vel.x, p->vel.z);
+            if (sp > 0) {
+                q32 ns = sp - TUNE_RUN_FRICTION;
+                if (ns < 0) ns = 0;
+                p->vel.x = qmul(qdiv(p->vel.x, sp), ns);
+                p->vel.z = qmul(qdiv(p->vel.z, sp), ns);
+            }
+        }
+        /* TUMBLE lasts TUNE_TUMBLE_TICKS; the REMAINDER of the timer is invuln.
+         * The timer is set to TUMBLE + INVULN on a hit and the exit used to wait
+         * for it to reach 0, which stunned the player for the whole 90 ticks
+         * (1.5s) instead of the intended 30. The invuln check downstream is
+         * "not TUMBLE and timer > 0", so handing control back early with the
+         * timer still running is exactly what those two constants meant. */
+        if (p->timer <= TUNE_INVULN_TICKS && on_ground(p)) {
             p->state = PSTATE_IDLE;
             /* Drop the knockback velocity on the way out of TUMBLE.
              *

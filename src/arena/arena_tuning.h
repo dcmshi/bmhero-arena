@@ -189,7 +189,19 @@
 
 /* Bump when any value changes; folded into the session version hash. */
 #ifndef TUNE_VERSION
-#define TUNE_VERSION         12     /* 2026-07-27: (v12) TWO more feel-test fixes.
+#define TUNE_VERSION         13     /* 2026-07-27: (v13) TUMBLE fixes, both from the feel
+                                     * test report "upon hit it pushes me back and keeps the
+                                     * running momentum in that direction".
+                                     * (1) knockback now SKIDS - nothing else touches velocity
+                                     * during TUMBLE, so it used to carry at CONSTANT speed for
+                                     * the whole stun (measured 4.8u of travel on a 7.9u
+                                     * half-width arena); now bled off at TUNE_RUN_FRICTION.
+                                     * (2) the stun lasts TUNE_TUMBLE_TICKS, not TUMBLE+INVULN:
+                                     * the damage code sets the timer to the SUM and the exit
+                                     * waited for zero, freezing the player 90 ticks (1.5s)
+                                     * instead of 30. The remainder stays as invuln, which is
+                                     * what the downstream check already assumed.
+                                     * 2026-07-27: (v12) TWO more feel-test fixes.
                                      * (1) TUNE_TURN_SNAP_SPEED raised above top speed, so
                                      * the facing ALWAYS snaps - a deliberate reversal of
                                      * A1.3's decomp-authentic gradual turn, because in an
