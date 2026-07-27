@@ -36,6 +36,13 @@ jobs:
           ${{ matrix.cc }} -std=c11 -Wall -Wextra -Werror ${{ matrix.opt }} \
             -o test_bmb src/arena/arena_sim.c tests/test_bomb_mechanics.c
           ./test_bmb
+      # Round lifecycle: a frozen sim is still perfectly deterministic, so the
+      # determinism suite could never have caught PHASE_ROUND_END being terminal.
+      - name: round lifecycle + turn snap tests
+        shell: bash
+        run: |
+          ${{ matrix.cc }} -std=c11 -Wall -Wextra -Werror ${{ matrix.opt }} \n            -o test_rnd src/arena/arena_sim.c tests/test_round.c
+          ./test_rnd
       - name: feel-metrics probe tests
         shell: bash
         run: |

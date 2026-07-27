@@ -15,12 +15,27 @@ static int failures = 0;
  * every subsequent tick — freezing yaw and making this helper never
  * converge. Player 1 gets neutral input and never interferes (spawns far
  * from player 0, no bombs in play). */
-static int ticks_to_turn(int sx, int sy, uint16_t start_yaw) {
+/* wx/wy is the WARM-UP stick: held first so the player is genuinely MOVING
+ * along start_yaw before the turn is measured.
+ *
+ * That warm-up is load-bearing since v9. The bounded sweep only applies while
+ * there is momentum to redirect; below TUNE_TURN_SNAP_SPEED the facing snaps,
+ * because the real walker snaps too (measured against the game's own moveAngle
+ * on a stop-then-reverse - arena_tuning.h TUNE_TURN_SNAP_SPEED). Measuring a
+ * "gradual turn" from a standstill therefore measures the snap path and reports
+ * 1 tick, which is correct behaviour failing a test that never established its
+ * own precondition. */
+static int ticks_to_turn(int sx, int sy, uint16_t start_yaw, int wx, int wy) {
     ArenaState s; arena_init(&s, 0, 2, 1);
     s.phase = PHASE_PLAY;                       /* skip countdown */
-    s.players[0].yaw = start_yaw;
     ArenaInput in[ARENA_MAX_PLAYERS];
     for (int i=0;i<ARENA_MAX_PLAYERS;i++) in[i]=arena_input_pack(0,0,0,0,0);
+
+    /* warm up to speed along start_yaw */
+    in[0]=arena_input_pack(wx,wy,0,0,0);
+    for (int t=0;t<60;t++) arena_tick(&s,in);
+    s.players[0].yaw = start_yaw;                /* exact start facing */
+
     in[0]=arena_input_pack(sx,sy,0,0,0);
     uint16_t target = iatan2(Q(sx), Q(-sy));
     for (int t=1;t<=600;t++){ arena_tick(&s,in);
@@ -36,9 +51,9 @@ static void test_turn_is_gradual(void) {
      * identical to start_yaw (no turn at all, degenerate test); iy=-31
      * resolves to target 0x0000, the genuine 180deg reversal this test
      * is meant to exercise. */
-    int t = ticks_to_turn(0, -31, 0x8000);
+    int t = ticks_to_turn(0, -31, 0x8000, 0, +31);   /* warm up facing +Z first */
     int expect = 0x8000 / TUNE_TURN_RATE;
-    CHECK(t > 1, "turn must be gradual, not instant (got %d ticks)", t);
+    CHECK(t > 1, "a turn AT SPEED must be gradual, not instant (got %d ticks)", t);
     CHECK(t >= expect-2 && t <= expect+2, "180deg turn took %d ticks, expected ~%d", t, expect);
 }
 

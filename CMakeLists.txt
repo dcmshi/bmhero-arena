@@ -41,6 +41,16 @@ if(NOT MSVC)
 endif()
 add_test(NAME bomb_mechanics COMMAND test_bomb_mechanics)
 
+# Round lifecycle + turn snap. Guards the 2026-07-27 feel-test bugs: a
+# terminal PHASE_ROUND_END froze the player for good, and the turn swept from
+# a standstill where the real walker snaps.
+add_executable(test_round tests/test_round.c)
+target_link_libraries(test_round arena_sim)
+if(NOT MSVC)
+  target_compile_options(test_round PRIVATE -Wconversion -Wno-sign-conversion)
+endif()
+add_test(NAME round_turn COMMAND test_round)
+
 # Feel-metrics probes. tune_probes.c is compiled INTO the test target rather
 # than linked from arena_sim: it is tools-side code that uses floats, and
 # arena_sim carries -Wconversion + the no-floats invariant.

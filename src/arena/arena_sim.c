@@ -11,6 +11,36 @@
 
 /* ------------------------------------------------------------------ init */
 
+/* Put everyone back on their spawn for a fresh round, and clear the field.
+ *
+ * Shared by arena_init and the round restart so the two can never drift apart -
+ * a restart that seeded players differently from a fresh match would be a
+ * desync waiting to happen.
+ *
+ * stocks_won is MATCH state, not round state, so it survives. Everything else
+ * about a player is reset, via memset, which also keeps the padding zeroed
+ * (invariant 5 - the FNV hash covers all bytes). */
+static void round_reset(ArenaState* s) {
+    const ArenaGeom* g = arena_geoms[s->arena_id];   /* registry is an array of pointers */
+    for (int i = 0; i < ARENA_MAX_PLAYERS; i++) {
+        ArenaPlayer* p = &s->players[i];
+        uint8_t won = p->stocks_won;
+        memset(p, 0, sizeof(*p));
+        p->stocks_won = won;
+        if (i < s->num_players) {
+            p->pos   = g->spawns[i];
+            p->hp    = TUNE_START_HP;
+            p->state = PSTATE_IDLE;
+            p->yaw   = (uint16_t)(iatan2(-p->pos.x, -p->pos.z)); /* face center */
+        } else {
+            p->state = PSTATE_DEAD;
+        }
+    }
+    memset(s->bombs,  0, sizeof s->bombs);
+    memset(s->blasts, 0, sizeof s->blasts);
+    s->shrink_step = 0;
+}
+
 void arena_init(ArenaState* s, uint8_t arena_id, uint8_t num_players, uint32_t seed) {
     memset(s, 0, sizeof(*s));               /* zeroes padding: hash stability */
     s->arena_id    = arena_id;
@@ -18,17 +48,7 @@ void arena_init(ArenaState* s, uint8_t arena_id, uint8_t num_players, uint32_t s
     s->rng         = seed ? seed : 1u;      /* xorshift must not be 0 */
     s->phase       = PHASE_COUNTDOWN;
     s->phase_timer = TUNE_COUNTDOWN_TICKS;
-
-    const ArenaGeom* g = arena_geoms[arena_id];   /* registry is an array of pointers */
-    for (int i = 0; i < num_players; i++) {
-        ArenaPlayer* p = &s->players[i];
-        p->pos   = g->spawns[i];
-        p->hp    = TUNE_START_HP;
-        p->state = PSTATE_IDLE;
-        p->yaw   = (uint16_t)(iatan2(-p->pos.x, -p->pos.z)); /* face center */
-    }
-    for (int i = num_players; i < ARENA_MAX_PLAYERS; i++)
-        s->players[i].state = PSTATE_DEAD;
+    round_reset(s);
 }
 
 /* ------------------------------------------------------- collision utils */
@@ -138,10 +158,34 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
         if (mag > Q(0.10)) {                       /* deadzone */
             uint16_t target = iatan2(Q(ix), Q(-iy));  /* stick up = -Z (into screen) */
             int16_t delta = (int16_t)(target - p->yaw);       /* short-arc signed */
-            int16_t step  = (int16_t)TUNE_TURN_RATE;
-            if (delta >  step) delta =  step;
-            if (delta < -step) delta = -step;
-            p->yaw = (uint16_t)(p->yaw + delta);
+            /* SNAP when there is no momentum to redirect; sweep when there is.
+             *
+             * The bounded sweep models the real walker turning while RUNNING,
+             * and that part feels right. But applying it from a standstill was
+             * wrong, and the game itself says so: with the fixed camera we can
+             * read the game's own moveAngle per frame, and on a stop-then-
+             * reverse it SNAPS 180 -> 0 in a single frame while our sim swept
+             * for 30 (probe mode 9, 2026-07-27). The decomp agrees - the real
+             * walker's turn is per-action-state, and "states 5/6/29/34 snap
+             * instantly (thr 360)" (movement-re.md ## Turn); the probe shows the
+             * player in states 29/30/31 across exactly that manoeuvre.
+             *
+             * Sweeping from rest also decoupled facing from travel for half a
+             * second, because the render bridge takes facing from the GAME
+             * (snapped) and motion from the SIM (sweeping) - the player faced
+             * one way and slid the other. That is the "drift when starting to
+             * move" from the feel test.
+             *
+             * Speed, not action state, is the modelling handle we have: with no
+             * momentum there is nothing for a gradual turn to conserve. */
+            if (qlen2(p->vel.x, p->vel.z) <= TUNE_TURN_SNAP_SPEED) {
+                p->yaw = target;
+            } else {
+                int16_t step = (int16_t)TUNE_TURN_RATE;
+                if (delta >  step) delta =  step;
+                if (delta < -step) delta = -step;
+                p->yaw = (uint16_t)(p->yaw + delta);
+            }
             target_speed = qmul(TUNE_RUN_SPEED, mag);
         }
     }
@@ -289,7 +333,28 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
         if ((s->phase_timer % 60) == 0 && s->shrink_step < 96) s->shrink_step++;
         break;
     case PHASE_ROUND_END:
+        /* This used to count down and then do NOTHING, which made the phase
+         * terminal: `gameplay` is false here, so player_tick ignores input and
+         * every player is frozen for good. Combined with there being no respawn
+         * for a dead player, a match ended by anyone winning a round - or by the
+         * local player blowing themselves up - simply locked up. That is the
+         * "bomberman is stuck in place after playing for a bit" from the
+         * 2026-07-27 feel test.
+         *
+         * Now the round restarts until someone takes the match. */
         if (s->phase_timer > 0) s->phase_timer--;
+        if (s->phase_timer == 0) {
+            int match_over = 0;
+            for (int i = 0; i < s->num_players; i++)
+                if (s->players[i].stocks_won >= TUNE_ROUNDS_TO_WIN) match_over = 1;
+            if (!match_over) {
+                round_reset(s);
+                s->phase       = PHASE_COUNTDOWN;
+                s->phase_timer = TUNE_COUNTDOWN_TICKS;
+            }
+            /* Match over: stay here. Ending the MATCH is the session's call
+             * (rematch, lobby, results screen), not the sim's. */
+        }
         break;
     }
     if (s->phase == PHASE_SUDDEN_DEATH) {

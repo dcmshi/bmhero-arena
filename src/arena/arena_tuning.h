@@ -71,6 +71,21 @@
                                          * gameplay choice, not a correction. FEEL knob. */
 #endif
 
+/* Below this speed a direction change SNAPS the facing instead of sweeping it
+ * at TUNE_TURN_RATE. ~13% of top speed - i.e. "not really moving", about one
+ * friction tick above a standstill (stop_ticks is 6).
+ *
+ * Measured, not guessed: with the fixed camera the game's own moveAngle can be
+ * read per frame, and on a stop-then-reverse it SNAPS in ONE frame while the
+ * sim swept for 30 (fork probe mode 9, 2026-07-27). The decomp says the same -
+ * the real walker's turn is per-action-state and several states snap instantly
+ * (docs/bmhero-player-movement-re.md ## Turn). Speed is the closest handle the
+ * sim has to those states: with no momentum there is nothing to conserve.
+ * Set to 0 to restore the old always-sweep behaviour. */
+#ifndef TUNE_TURN_SNAP_SPEED
+#define TUNE_TURN_SNAP_SPEED Q(0.020)
+#endif
+
 /* -- bombs -- TODO(feel): calibrate against decomp bmhero src/code/69AA0.c
  * during A1. Verified there: throw is a FIXED launch (pitch 80deg, speed 35,
  * dir = facing; no stick/momentum term), kicked/rolled bombs go flat at
@@ -162,7 +177,16 @@
 
 /* Bump when any value changes; folded into the session version hash. */
 #ifndef TUNE_VERSION
-#define TUNE_VERSION         8      /* 2026-07-26: (v8) arena0 re-matched to the DIRECTLY MEASURED
+#define TUNE_VERSION         9      /* 2026-07-27: (v9) TWO fixes from the first real feel
+                                     * test. (1) PHASE_ROUND_END was TERMINAL - it counted
+                                     * down and then did nothing, while `gameplay` gates input
+                                     * off, so a finished round (or dying to your own bomb,
+                                     * with no respawn) froze the player for good. Rounds now
+                                     * restart until TUNE_ROUNDS_TO_WIN. (2) TUNE_TURN_SNAP_SPEED:
+                                     * facing SNAPS below that speed instead of sweeping - the
+                                     * game's own moveAngle snaps in one frame on a stop-then-
+                                     * reverse where the sim swept for 30.
+                                     * 2026-07-26: (v8) arena0 re-matched to the DIRECTLY MEASURED
                                      * floor: a 1900x1900 Hero square, so half_x = half_z =
                                      * Q(7.9167) — square, not the v5 rectangle. v5's "1900x900"
                                      * came from walking a player, which measures how far the

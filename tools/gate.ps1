@@ -54,6 +54,7 @@ Write-Host "gate: $CC $($FLAGS -join ' ')`n"
 Run-Suite "determinism"     @($SIM, (Join-Path $root "tests\test_determinism.c"))
 Run-Suite "movement"        @($SIM, (Join-Path $root "tests\test_movement.c"))
 Run-Suite "bomb_mechanics"  @($SIM, (Join-Path $root "tests\test_bomb_mechanics.c"))
+Run-Suite "round_turn"      @($SIM, (Join-Path $root "tests\test_round.c"))
 Run-Suite "tune_probes"     @($SIM, (Join-Path $root "tools\tune_probes.c"),
                                (Join-Path $root "tests\test_tune_report.c"))
 
