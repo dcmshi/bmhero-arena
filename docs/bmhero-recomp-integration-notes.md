@@ -1665,9 +1665,37 @@ for the first `[blastvis]` — every write is flushed, so polling is exact — t
 detonation point; gone after TTL. The technique generalizes: any flushed marker
 can trigger a capture at sub-frame-window precision without input timing.
 
-### Known v1 crudeness (feel pass decides)
+### ~~Known v1 crudeness~~ — superseded same day by v2 (below)
 
-It's a giant **bomb** (blue, fused), not a fireball; the ball's center sits on
-the floor so it renders half-submerged; the `/15` mesh-base divisor is a
-`TODO(feel)`. Candidate refinements: lift the center by the radius, recolor or
-swap the mesh, or retry an effect ID from the (crashy) effect-list spawner.
+~~It's a giant **bomb** (blue, fused), not a fireball~~ — the feel test said
+exactly that ("reads as a giant bomb, not a blast"), so v1 lasted one session.
+Kept because the mechanism notes above (Scale honored by the draw, bomb-pool
+reuse, the stateless assignment) remain true and reusable.
+
+### v2 (same day): spawn the GAME'S OWN explosion — fork `6c28ec8`
+
+Reading the game's detonation path found the real thing:
+
+- The game bomb's fuse-out calls `func_800795C8` (`69AA0.c:465`) →
+  **`func_8007E76C(x, y, z, type)`** (`code/70C40.c:12`) — the explosion
+  spawner. Type 0 = the normal bomb blast.
+- Explosions live in a **dedicated pool `gObjects[6..13]`** — separate from
+  the bomb pool [2..5] and the generic pool [14..77], so the ~8-actor ceiling
+  is entirely out of play. The arena bypass never touched this pool, and the
+  old "double bombs" bug proves the path works in the Battle Room (the game
+  player's thrown bombs exploded through it).
+- The spawner binds a **two-part mesh from `gFileArray[0xD]`** (low-index core
+  asset, resident in every level), **plays the explosion SFX**
+  (`func_800177D8`), scales by `gFireCount`, and the objID handler runs its
+  own grow/expire lifecycle — fully self-managed.
+
+The patch now calls it once per blast birth (`arena_export_blast_new(k)`, the
+existing native edge detector); the v1 scaled-ball loop is deleted. The new
+`func_8001C0EC` walker gate (§8.23) does not interfere — explosion objIDs ≠ 0.
+Screenshots: orange fireball dome + expanding smoke ring at the detonation
+tile; board fully clean 2s later (self-expired, no pool litter). Gates:
+`-Expect '\[blastvis\] k=\d+ slot=-2'`, pose regression, 5/5 soak — all green.
+
+Note the sim's 192u hitbox is not passed — the game explosion draws its own
+(campaign-default) size. If the feel pass wants visual = hitbox, set
+`gFireCount` or override `Scale` on the spawned slot.
