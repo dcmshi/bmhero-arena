@@ -1699,3 +1699,54 @@ tile; board fully clean 2s later (self-expired, no pool litter). Gates:
 Note the sim's 192u hitbox is not passed — the game explosion draws its own
 (campaign-default) size. If the feel pass wants visual = hitbox, set
 `gFireCount` or override `Scale` on the spawned slot.
+
+---
+
+## §8.25 — Feel round 2: authentic poses (29 / none), bomb rest height, cam yaw (2026-07-30)
+
+Fork commit `4696b7d`. Three findings from one feel report, each settled
+against the game's own code/geometry before changing anything.
+
+### Bomb rest height: the mesh centre belongs at floor + 30
+
+The game bomb's ground handling rests it at `floor + 30.0f` (`69AA0.c:359`);
+the mode-7 raster confirmed our `origin_y` (240) IS the floor (`ground
+h=[240..240]`), so our bombs rendered half-sunk ("slightly inside the floor").
+`arena_bomb_wy`/`arena_blast_wy` now add `BOMB_MESH_REST_LIFT` (30) — settled
+bombs at 270 (gated: `[setdbg] wy=270.00`), and the explosion spawns at
+bomb-centre height like the game's own detonation.
+
+### Set pose is 29 after all — the stills lied, twice
+
+The drop handler plays 29 (`func_80282E5C_code_extra_0` via m2c:
+`func_8001C0EC(0,0,0x1D,1,D_80115808)`), and **front-view motion strips**
+(`tools/anims/strips/`) show 29 is a step-and-reach-DOWN place. The §8.22
+"reads as a throw" verdict — and therefore the 41 pick — was a far/back-camera
+artifact. 41 is a near-static stand (matching the feel report "looked off");
+42 is a crouch/curl. Default flipped to **29**.
+
+**And it was looping.** Clip 29 is 10 frames long (counter wraps 18→0); the
+fixed 24-frame window played it 2.4× — the feel report's "doesn't move as fast
+as I remember". The window is now `arena_pose_frames()` (default 10 = one exact
+play-through; `ARENA_POSE_FRAMES` overrides for longer clips). `-AnimProbe`'s
+default gate is the honest rising form on idx 29 again.
+
+### Kick pose is NONE — 32/33 aren't kicks
+
+§8.5c's code-truth stands (kick is 100% bomb-side; zero anim calls), and the
+strips show 32/33 are crouch/react clips with no extended leg. Default is now
+**-1 = keep locomotion** (the bomb shooting away is the feedback, as in the
+real game). `ARENA_SET_ANIM`/`ARENA_KICK_ANIM` accept -1, and 32/33/41/42
+remain reachable for comparison.
+
+### New instrument: ARENA_CAM_YAW + the facing trap
+
+Runtime camera yaw (native trig like pitch; default 0 = shipped view). The trap
+it uncovered: **the stick co-rotates with `gView.rot.y`, so a MOVING player's
+camera-relative facing is yaw-invariant** — orbiting a runner shows the same
+angle at every yaw. Mode 4's injected run always faces the camera (that's the
+front-shot recipe: `ARENA_AUTO_BATTLE=4 + ARENA_ANIM_SWEEP + follow cam`);
+an IDLE player + yaw genuinely orbits, but the idle follow-cam misframes at
+yaw≠0 (unresolved; mode 4 sidesteps it). Strip scripts poll the flushed log
+markers (`[animw]` / `[animsweep]`) to time captures — sub-window precision,
+no input timing.
