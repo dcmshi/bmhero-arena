@@ -1612,3 +1612,62 @@ used to read `STATIC (set but never advanced)`.
 - **Feel-verify pending** (with everything since v11): pose duration is fixed
   at 24 frames; if a clip reads as cut off in motion, read `func_8001B44C`
   (clip-finished flag) and close the window on finish instead.
+
+---
+
+## §8.24 — Explosion visual: the bomb pool doubles as the blast pool (2026-07-30)
+
+**Result:** detonation draws a growing ball instead of nothing. Fork commit
+`b379c94`; fork-only, sim untouched, hash `ff22fa4b` holds. Implements exactly
+the approach §8.13 documented when the separate A1.2c blast actors were dropped.
+
+### The mechanism
+
+A bomb's actor frees on the **exact tick** its blast spawns (`bomb_active`
+drops, blast `ttl` starts), so the 4-actor bomb pool covers blasts with **zero
+new model-pool slots** — the ~8-actor ceiling is never approached. Per frame,
+after the bomb block: collect free bomb actors (slot order), assign to active
+blasts (blast order), drive each to the blast's center with
+`Scale = blast_radius / 15` (mesh ≈ 15u base). Stateless; a blast may hop
+actors when the free set churns, but both actors are the same mesh driven to
+the same pos/scale, so the hop is invisible. Excess blasts simply don't render.
+
+Two facts settled from source before writing it:
+- **The generic draw honors `gObjects[i].Scale`** — `guScaleF` in the object
+  matrix build (`boot/17930.c:474/512`). §8.13 had left this unverified.
+- **Spawn default Scale is 1.0** (`17930.c:730`), so the bomb block force-writes
+  `Scale = 1.0` on live bombs — a blast-scaled actor coming back as a bomb
+  sheds the scale, and non-reused actors are untouched at their default.
+
+### Latent bug fixed in passing
+
+The dead A1.2c blast loop called `arena_export_blast_active` / `_wr` with
+**implicit declarations** — for an f32-returning export the caller reads `$v0`
+instead of `$f0` (garbage). It never fired only because `blastactor_get_slot`
+was always -1. Both now have proper `DECLARE_FUNC`s; the general rule is in the
+handoff traps (an implicit decl of a DECLARE_FUNC export compiles with only a
+warning and mis-reads float returns).
+
+### Evidence
+
+New export `arena_export_dbg_blast` (`0x8F000240`, full plumbing) → `[blastvis]
+k=<blast> slot=<actor> wr=<radius>` per drive frame, bounded by
+`TUNE_BLAST_TTL` (20) lines per blast:
+
+```powershell
+.\tools\arena-soak.ps1 -Mode 4 -Rising '\[blastvis\] k=0 slot=\d+ wr=(\d+)'
+# PASS: 16,32,..,192 then 192 held — growth over 12 ticks, hold for 8, ×2 blasts
+```
+
+Pixels confirmed with a **log-triggered screenshot** (poll `arena_bridge.log`
+for the first `[blastvis]` — every write is flushed, so polling is exact — then
+`capture-game.ps1` immediately and +200ms): a ball several tiles wide at the
+detonation point; gone after TTL. The technique generalizes: any flushed marker
+can trigger a capture at sub-frame-window precision without input timing.
+
+### Known v1 crudeness (feel pass decides)
+
+It's a giant **bomb** (blue, fused), not a fireball; the ball's center sits on
+the floor so it renders half-submerged; the `/15` mesh-base divisor is a
+`TODO(feel)`. Candidate refinements: lift the center by the radius, recolor or
+swap the mesh, or retry an effect ID from the (crashy) effect-list spawner.

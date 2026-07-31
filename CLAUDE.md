@@ -34,11 +34,11 @@ debug viewer, the tuning-loop toolkit, and A1.0 → **A1.5** — the sim drives 
 on-screen actors in a fixed-camera arena with bombs, set/kick poses, hazards
 suppressed and Hero's own HUD showing our numbers.
 
-**A1 remaining, all polish:** ~~action poses STATIC~~ — poses ANIMATE as of
-2026-07-30 (fork `2cac14c`, §8.23); no explosion visual; puppets 1–3 are still
-bomb-mesh placeholders; the arena is the Nitros render stand-in, not a
-purpose-built battle map. Nothing since v11 has been feel-verified. Details and
-priority order: the handoff.
+**A1 remaining, all polish:** ~~action poses STATIC~~ ~~no explosion visual~~ —
+poses ANIMATE and detonations draw a growing blast ball as of 2026-07-30 (fork
+`b379c94`, §8.23/§8.24); puppets 1–3 are still bomb-mesh placeholders; the
+arena is the Nitros render stand-in, not a purpose-built battle map. Nothing
+since v11 has been feel-verified. Details and priority order: the handoff.
 
 **Then A3** — online hardening (ROM-free): rendezvous server + lobby codes,
 host-relay fallback, 4P mesh WAN soak, desync surfacing, player-slot assignment.
