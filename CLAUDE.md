@@ -13,7 +13,7 @@ useful commands, and the one-time setup already done.
 
 | doc | what it's for |
 |---|---|
-| `docs/HANDOFF-2026-07-27.md` | **current open items, traps, commands** — read on resume |
+| `docs/HANDOFF-2026-07-30.md` | **current open items, traps, commands** — read on resume |
 | `docs/bmhero-recomp-integration-notes.md` | living RE reference for the fork-side render bridge (patches/exports, per-frame hooks, object & player structs, input, camera, coord mapping). Read before any A1.2+ work. **§8.x is the authority when anything else disagrees.** |
 | `docs/bmhero-battle-arena-design.md` | the mode being built: ruleset, ArenaState spec, tick pipeline, GekkoNet plan, render bridge, host-session model |
 | `docs/bmhero-multiplayer-architecture.md` | overall design: two sim domains, determinism model, netcode topology, milestones |
@@ -34,10 +34,11 @@ debug viewer, the tuning-loop toolkit, and A1.0 → **A1.5** — the sim drives 
 on-screen actors in a fixed-camera arena with bombs, set/kick poses, hazards
 suppressed and Hero's own HUD showing our numbers.
 
-**A1 remaining, all polish:** action poses are STATIC (held, not animated); no
-explosion visual; puppets 1–3 are still bomb-mesh placeholders; the arena is the
-Nitros render stand-in, not a purpose-built battle map. Nothing since v11 has been
-feel-verified. Details and priority order: the handoff.
+**A1 remaining, all polish:** ~~action poses STATIC~~ — poses ANIMATE as of
+2026-07-30 (fork `2cac14c`, §8.23); no explosion visual; puppets 1–3 are still
+bomb-mesh placeholders; the arena is the Nitros render stand-in, not a
+purpose-built battle map. Nothing since v11 has been feel-verified. Details and
+priority order: the handoff.
 
 **Then A3** — online hardening (ROM-free): rendezvous server + lobby codes,
 host-relay fallback, 4P mesh WAN soak, desync surfacing, player-slot assignment.

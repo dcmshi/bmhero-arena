@@ -1536,3 +1536,79 @@ first attempt silently did nothing:
   away with the same window by 3 ticks.
 - **`TUNE_FUSE_TICKS` is 150**, so the whole round trip must finish before the
   bomb detonates underneath the player.
+
+---
+
+## §8.23 — The poses ANIMATE: gate the walker's writes, trigger once (2026-07-30)
+
+**Result:** set 41 and kick 32 now *play* instead of holding frame 0. Fork
+commit `2cac14c`; fork-only, sim untouched, pinned hash `ff22fa4b` holds.
+Closes the "STATIC poses" item from §8.18/§8.22.
+
+### The mechanism
+
+`func_8001BE6C` resets the anim frame counter (`unk24 = 0.0f`, `17930.c:1182`)
+on **every** call — that one line is why hold-by-retrigger could never animate:
+each re-assert restarted the clip, pinning the counter at 0 *by construction*.
+
+The fix stops the fight instead of winning it every frame. `func_8001C0EC` is
+the single anim-trigger funnel the player overlay uses — **all 69 anim calls in
+the code_extra_0 machine-C (`funcs_50–54.c`) go through it; zero call
+`func_8001BE6C` or `func_8001C158` directly** (checked 2026-07-30). So a
+`RECOMP_PATCH` of `func_8001C0EC` (a 2-line function, reimplemented exactly)
+drops any anim write to the player body (`objId 0, part 0`) that isn't the held
+pose while a pose window is open:
+
+```c
+RECOMP_PATCH void func_8001C0EC(s32 objId, s32 part, s32 animIdx, s32 fileID, u32* animTable) {
+    if (objId == 0 && part == 0) {
+        s32 pose = arena_export_pose_anim();
+        if (pose >= 0 && animIdx != pose) return;   /* walker steal dropped */
+    }
+    func_8001BE6C(objId, part, animIdx, (s32)&gFileArray[fileID].ptr[animTable[animIdx]]);
+}
+```
+
+The per-frame block now triggers the pose **once** (its idx-mismatch condition
+fires only at window open; it stays as a fallback against unfunneled writes),
+and the game's own anim engine advances the clip. Window closes after 24 frames
+→ the walker's next re-assert passes → locomotion resumes on its own.
+
+Why not "engage the game's action state" (§8.18's original pointer): the
+correct poses are **unreferenced assets** — kick 32 provably so (§8.5c: the
+walk-in kick is 100% bomb-side), so there is no state to engage; and real
+action states bring movement side-effects (snap turns, impulses) that would
+fight the ABSOLUTE render-drive (§8.13).
+
+### The gate §8.18 retired is achievable again — and green
+
+`-Rising 'frame=(\d+)'` ("the frame counter advanced") was impossible under
+re-triggering and had to be replaced by the weaker duration gate. It now
+measures exactly the thing this slice claims:
+
+```powershell
+.\tools\arena-soak.ps1 -Mode 4  -Rising '\[animw\] \+\d+ idx=41 frame=(\d+)'  # PASS: 0,2,..,46 ×3 events
+.\tools\arena-soak.ps1 -Mode 10 -Rising '\[anim\] idx=32 frame=(\d+)'         # PASS: 0,2,..,14
+.\tools\arena-soak.ps1 -AnimProbe                                             # duration gate still PASS
+.\tools\arena-soak.ps1 -N 5                                                   # 5/5 boot soak
+```
+
+`arena-log.ps1` now classifies `idx 41 … advanced (played)` — the line that
+used to read `STATIC (set but never advanced)`.
+
+### Boundaries / known interactions
+
+- The gate consults `arena_export_pose_anim()` — a pure native getter (reads
+  two host ints, no I/O). It is **not** `recomp_printf`-class and is safe in
+  the load window; the `objId==0 && part==0` check short-circuits it for
+  everything but the player body anyway. Outside the arena the window is never
+  open, so menu/load/demo pass through byte-identically.
+- An `ARENA_ANIM_SWEEP` re-assert would also be dropped while a pose window is
+  open; sweep runs (`anim-contactsheet.ps1`) don't run battle probes, so the
+  two never coexist in practice.
+- If the player dies/warps *inside* a pose window (≤24 frames), that anim write
+  is dropped too; the window expires and the walker recovers next frame.
+  Cosmetic at worst; damage is suppressed in-arena (§8.20).
+- **Feel-verify pending** (with everything since v11): pose duration is fixed
+  at 24 frames; if a clip reads as cut off in motion, read `func_8001B44C`
+  (clip-finished flag) and close the window on finish instead.
