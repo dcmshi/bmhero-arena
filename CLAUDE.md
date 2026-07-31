@@ -23,11 +23,12 @@ useful commands, and the one-time setup already done.
 | `docs/PROJECT-LOG.md` | milestone history (what was done when, and why). Archive — not current state |
 | `README.md` | this repo's layout, build, and the five invariants |
 
-## Where things stand (verified 2026-07-27)
+## Where things stand (verified 2026-07-30)
 
-**Sim:** `TUNE_VERSION` **14**, pinned hash **`ff22fa4b`**. Canonical `main` and
-fork `master` both pushed, built, soaked and CI-green. Per-slice feature branches
-are retired — **work from `master`** on the fork.
+**Sim:** `TUNE_VERSION` **15**, pinned hash **`cce00b99`** (v15: thrown bombs
+impact-detonate). Canonical `main` and fork `master` both built, soaked and
+gate-green — **local, unpushed** pending the current feel round. Per-slice
+feature branches are retired — **work from `master`** on the fork.
 
 **Done:** A0 (headless deterministic sim), A2 (GekkoNet SyncSession), the SDL
 debug viewer, the tuning-loop toolkit, and A1.0 → **A1.5** — the sim drives four
