@@ -129,10 +129,10 @@
 #define TUNE_BOMB_RADIUS     Q(0.30)
 #endif
 #ifndef TUNE_BOMB_RESTITUTION
-#define TUNE_BOMB_RESTITUTION Q(0.40)   /* single bounce */
+#define TUNE_BOMB_RESTITUTION Q(0.40)   /* UNREFERENCED since v15 (impact detonation) */
 #endif
 #ifndef TUNE_BOMB_H_DAMP
-#define TUNE_BOMB_H_DAMP     Q(0.55)    /* horizontal damping on bounce */
+#define TUNE_BOMB_H_DAMP     Q(0.55)    /* UNREFERENCED since v15 (impact detonation) */
 #endif
 #ifndef TUNE_FUSE_TICKS
 #define TUNE_FUSE_TICKS      150        /* settled -> boom */
@@ -205,7 +205,16 @@
 
 /* Bump when any value changes; folded into the session version hash. */
 #ifndef TUNE_VERSION
-#define TUNE_VERSION         14     /* 2026-07-27: (v14) TUNE_RESPAWN_TICKS = 120. A dead
+#define TUNE_VERSION         15     /* 2026-07-30: (v15) thrown bombs IMPACT-DETONATE.
+                                     * An AIRBORNE bomb now explodes on contact with
+                                     * anything - player, ground bomb, wall, floor - like
+                                     * the real game's thrown bombs ("for throwing the
+                                     * bombs should explode on contact with the floor or
+                                     * anything", feel test). The bounce-then-settle path
+                                     * is gone; TUNE_BOMB_RESTITUTION / TUNE_BOMB_H_DAMP
+                                     * are now unreferenced (kept for table stability).
+                                     * Set/kick bombs are unchanged (fuse / slide rules).
+                                     * 2026-07-27: (v14) TUNE_RESPAWN_TICKS = 120. A dead
                                      * player now comes back after 2s. TESTING ACCOMMODATION,
                                      * requested during feel testing: a round ends at
                                      * `alive <= 1` and the opponents are inert placeholders

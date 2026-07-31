@@ -453,7 +453,14 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
         case BSTATE_AIRBORNE: {
             b->vel.y -= TUNE_GRAVITY;
             b->pos.x += b->vel.x; b->pos.y += b->vel.y; b->pos.z += b->vel.z;
-            /* direct hit on a player -> detonate on impact */
+            /* IMPACT DETONATION (v15): a thrown bomb explodes on contact with
+             * ANYTHING - a player, a ground bomb, a wall, the floor - like the
+             * real game's thrown bombs. It never bounces or settles (the old
+             * bounce-then-settle path is gone; feel test 2026-07-30). Check
+             * order is fixed: players 0..3, bombs 0..15, walls, floor. */
+            /* players: direct hit -> detonate (thrower grace lasts the whole
+             * flight - bounced never sets now that bombs don't bounce; the
+             * blast at the impact point can still hit the thrower) */
             for (int pi = 0; pi < s->num_players; pi++) {
                 const ArenaPlayer* p = &s->players[pi];
                 if (pi == b->owner && !b->bounced) continue;  /* grace vs self */
@@ -467,26 +474,35 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
                 }
             }
             if (b->state != BSTATE_AIRBORNE) break;
-            /* walls stop bombs */
-            {
-                Vec3q v = b->vel;
-                collide_static(&b->pos, &v, TUNE_BOMB_RADIUS, g, wall_x, wall_z);
-                b->vel.x = v.x; b->vel.z = v.z;
-            }
-            /* floor bounce */
-            if (b->pos.y <= 0 && b->vel.y < 0) {
-                if (!b->bounced) {
-                    b->pos.y = 0;
-                    b->vel.y = qmul(-b->vel.y, TUNE_BOMB_RESTITUTION);
-                    b->vel.x = qmul(b->vel.x, TUNE_BOMB_H_DAMP);
-                    b->vel.z = qmul(b->vel.z, TUNE_BOMB_H_DAMP);
-                    b->bounced = 1;
-                } else {
-                    b->pos.y   = 0;
-                    b->state   = BSTATE_SETTLED;
-                    b->fuse    = TUNE_FUSE_TICKS;
-                    b->bounced = 0;   /* bounce flag done; field now = kick grace */
+            /* other live ground bombs: 3D contact -> detonate (the blast
+             * chains the touched bomb on the next tick) */
+            for (int bj = 0; bj < ARENA_MAX_BOMBS; bj++) {
+                const ArenaBomb* ob = &s->bombs[bj];
+                if (bj == i) continue;
+                if (ob->state != BSTATE_SETTLED && ob->state != BSTATE_SLIDING)
+                    continue;
+                Vec3q d = { b->pos.x - ob->pos.x, b->pos.y - ob->pos.y,
+                            b->pos.z - ob->pos.z };
+                if (qlen3(d) < 2 * TUNE_BOMB_RADIUS) {
+                    b->state = BSTATE_EXPLODING;
+                    break;
                 }
+            }
+            if (b->state != BSTATE_AIRBORNE) break;
+            /* walls / pillars: any pushback = contact = detonate (was: walls
+             * stop bombs) */
+            {
+                Vec3q pre_p = b->pos, pre_v = b->vel;
+                collide_static(&b->pos, &b->vel, TUNE_BOMB_RADIUS, g, wall_x, wall_z);
+                if (b->pos.x != pre_p.x || b->pos.z != pre_p.z
+                    || b->vel.x != pre_v.x || b->vel.z != pre_v.z)
+                    b->state = BSTATE_EXPLODING;
+            }
+            if (b->state != BSTATE_AIRBORNE) break;
+            /* floor: contact -> detonate at ground level */
+            if (b->pos.y <= 0 && b->vel.y < 0) {
+                b->pos.y = 0;
+                b->state = BSTATE_EXPLODING;
             }
             break;
         }

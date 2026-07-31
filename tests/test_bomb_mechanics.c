@@ -59,7 +59,9 @@ static void test_throw_fixed_arc(void) {
     uint16_t yaw_a = s.players[0].yaw;
     Vec3q origin_a = s.players[0].pos;
     run(&s, NEUTRAL, 120);                            /* release, fly, land */
-    CHECK(s.bombs[0].state == BSTATE_SETTLED, "throw A settled");
+    /* v15: thrown bombs impact-detonate; detonate() preserves pos, so the
+     * stale bomb record still marks the impact point. */
+    CHECK(s.bombs[0].state == BSTATE_FREE, "throw A impact-detonated");
     q32 dist_a = bomb_xz_dist(&s.bombs[0], origin_a);
 
     /* release with the stick held full forward */
@@ -74,7 +76,7 @@ static void test_throw_fixed_arc(void) {
           "precondition: turn has converged, so the release tick adds no turn "
           "(yaw %u -> %u)", yaw_b, s.players[0].yaw);
     run(&s, NEUTRAL, 120);
-    CHECK(s.bombs[0].state == BSTATE_SETTLED, "throw B settled");
+    CHECK(s.bombs[0].state == BSTATE_FREE, "throw B impact-detonated");
     q32 dist_b = bomb_xz_dist(&s.bombs[0], origin_b);
 
     CHECK(yaw_a == yaw_b, "precondition: both throws launch from the same facing "
@@ -109,20 +111,98 @@ static void test_spread(void) {
 }
 
 static void test_spread_cap(void) {
+    /* v15 REDESIGN: the old setup floored 4 bombs with a first spread, but
+     * thrown bombs now impact-detonate, so nothing stays live long enough to
+     * crowd the cap. SET bombs (unchanged rules) fill it instead: 4 settled
+     * bombs + a spread of 4 must clamp to cap (6) - 4 = 2 launches. */
     ArenaState s;
     start2(&s);
-    /* first spread: 4 live bombs on the floor */
-    run(&s, arena_input_pack(0, 0, 0, 1, 0), TUNE_SPREAD_TICKS + 5);
-    run(&s, NEUTRAL, 1);
-    /* second spread armed while 4 still live: cap 6 clamps it to 2 */
-    run(&s, arena_input_pack(0, 0, 0, 1, 0), TUNE_SPREAD_TICKS + 5);
-    run(&s, NEUTRAL, 1);
+    /* pre-place 4 settled bombs directly (fresh fuses; spaced so nothing
+     * chains or gets kicked) - direct setup like the other contact tests,
+     * immune to fuse-vs-choreography timing */
+    for (int k = 0; k < 4; k++) {
+        s.bombs[k].state = BSTATE_SETTLED;
+        s.bombs[k].owner = 0;
+        s.bombs[k].fuse  = TUNE_FUSE_TICKS;
+        s.bombs[k].bounced = 0;
+        s.bombs[k].pos.x = Q(2.0) + k * Q(1.5);
+        s.bombs[k].pos.y = 0;
+        s.bombs[k].pos.z = Q(3.0);
+    }
+    s.players[0].live_bombs = 4;
+    run(&s, arena_input_pack(0, 0, 0, 1, 0), TUNE_SPREAD_TICKS + 5); /* arm */
+    run(&s, NEUTRAL, 1);                                             /* release */
     CHECK(s.players[0].live_bombs == TUNE_MAX_LIVE_BOMBS,
           "cap reached exactly (live=%d)", s.players[0].live_bombs);
     int airborne = 0;
     for (int i = 0; i < ARENA_MAX_BOMBS; i++)
         if (s.bombs[i].state == BSTATE_AIRBORNE) airborne++;
-    CHECK(airborne == 2, "second spread clamped to 2 bombs (got %d)", airborne);
+    CHECK(airborne == 2, "spread clamped to 2 bombs (got %d)", airborne);
+}
+
+static void test_throw_impact_detonates(void) {
+    /* v15: a thrown bomb explodes on contact with anything and never settles.
+     * (a) floor: fly the whole arc, assert the blast is born the tick the
+     *     flight ends, at ground level. */
+    ArenaState s;
+    start2(&s);
+    /* aim at OPEN FLOOR: the spawn-facing throw reaches a wall before the
+     * floor (first run of this test: wall hit at z=-7.62, y=0.39). Face +X
+     * and let the turn converge, exactly like test_throw_fixed_arc. */
+    run(&s, arena_input_pack(0, 0, 0, 1, 0), 5);      /* grab */
+    run(&s, arena_input_pack(31, 0, 0, 1, 0), 30);    /* face +X while holding */
+    run(&s, arena_input_pack(0, 0, 0, 1, 0), 40);     /* stop (friction) */
+    run(&s, NEUTRAL, 1);                              /* release */
+    int bi = -1;
+    for (int i = 0; i < ARENA_MAX_BOMBS; i++)
+        if (s.bombs[i].state == BSTATE_AIRBORNE) { bi = i; break; }
+    CHECK(bi >= 0, "throw launches an airborne bomb");
+    if (bi < 0) return;
+    int landed = 0;
+    for (int t = 0; t < 200 && !landed; t++) {
+        run(&s, NEUTRAL, 1);
+        uint8_t st = s.bombs[bi].state;
+        CHECK(st != BSTATE_SETTLED, "thrown bomb never settles (tick %d)", t);
+        if (st != BSTATE_AIRBORNE) {
+            landed = 1;
+            CHECK(st == BSTATE_FREE, "impact -> detonated (state=%d)", st);
+            CHECK(s.bombs[bi].pos.y == 0,
+                  "floor impact at ground level (y=%d tick=%d x=%d z=%d)",
+                  s.bombs[bi].pos.y, t, s.bombs[bi].pos.x, s.bombs[bi].pos.z);
+            int fresh = 0;
+            for (int k = 0; k < ARENA_MAX_BLASTS; k++)
+                if (s.blasts[k].ttl >= TUNE_BLAST_TTL - 1 &&
+                    s.blasts[k].center.x == s.bombs[bi].pos.x &&
+                    s.blasts[k].center.z == s.bombs[bi].pos.z) fresh = 1;
+            CHECK(fresh, "a blast is born at the impact point");
+        }
+    }
+    CHECK(landed, "the flight ends within 200 ticks");
+
+    /* (b) wall: an airborne bomb crossing into a wall detonates IN THE AIR
+     *    (blast center above the floor), not after falling to the ground.
+     *    Direct setup, like the other contact tests: high enough that gravity
+     *    can't floor it before the wall does. */
+    start2(&s);
+    s.bombs[0].state  = BSTATE_AIRBORNE;
+    s.bombs[0].owner  = 0;
+    s.bombs[0].bounced = 0;
+    /* wall (~7.6u) must arrive before the floor: at Q(0.6)/tick the wall is
+     * ~13 ticks out; gravity floors it at ~18 (y0=2, vy=+0.05, g=0.0175) */
+    s.bombs[0].pos.x = 0; s.bombs[0].pos.y = Q(2.0); s.bombs[0].pos.z = 0;
+    s.bombs[0].vel.x = Q(0.60); s.bombs[0].vel.y = Q(0.05); s.bombs[0].vel.z = 0;
+    s.players[0].live_bombs = 1;
+    int hit = 0;
+    for (int t = 0; t < 60 && !hit; t++) {
+        run(&s, NEUTRAL, 1);
+        if (s.bombs[0].state != BSTATE_AIRBORNE) {
+            hit = 1;
+            CHECK(s.bombs[0].state == BSTATE_FREE, "wall impact detonates");
+            CHECK(s.bombs[0].pos.y > 0,
+                  "detonated in the air on wall contact (y=%d)", s.bombs[0].pos.y);
+        }
+    }
+    CHECK(hit, "the bomb reached the wall within 60 ticks");
 }
 
 static void test_set_and_walkin_kick_wall(void) {
@@ -250,6 +330,7 @@ static void test_set_ignored_while_holding(void) {
 
 int main(void) {
     test_throw_fixed_arc();
+    test_throw_impact_detonates();
     test_spread();
     test_spread_cap();
     test_set_and_walkin_kick_wall();
