@@ -2008,3 +2008,38 @@ Mode 12 (`ARENA_AUTO_BATTLE=12`): jump, set at apex, moving set — the
 (dbg_cam tag 7/8; tag 8's y/z were repurposed for pairing + pressed masks).
 The five ruled-out channels above were each ruled out by a field in this line
 — when a state misbehaves, extend the line before theorizing.
+
+## 8.28 Feel round 5 (2026-08-01): B belongs to the game, R-only set, falling air-sets, camera baked
+
+Round 4's poll strip was TOO WIDE: stripping B silently removed the hold
+animation, the multi-bomb windup and its SOUND — all three are the walker's
+own carry/windup actions, and always were (they had worked via the press-edge
+leak). **B now passes through deliberately**: the walker carries/winds up/
+throws (holds run its action state 14), and the game bombs it spawns stay
+hidden under the per-frame pool sweep — the sim's bombs remain the only
+visible ones. Only the SET verbs (Z, R) stay stripped, and the sim reads
+**R only** (user: "just have r since that's the default").
+
+The 42-containment was also refined: resetting to IDLE mid-jump re-entered
+the jump on a held A and kept rising (the round-5 "still keeps rising") —
+the containment now RESTORES the last non-push state from a native latch
+(`arena_export_contain_state`, 0x8F000264). 52 is no longer contained: with
+B stripped it was the actor-overlap squash; with B passing it does not occur
+at all (the walker's real carry is state 14).
+
+Sim v17: an air-set bomb DROPS from the hands (`BSTATE_FALLING`, appended
+enum) and settles on landing — no more floor teleport; it never
+impact-detonates, its fuse burns from the set edge, and it is
+blast-chainable while falling. Consequences that come free: the bomb renders
+during the fall (`active = state != FREE`), and the set POSE stays
+grounded-only by construction (the pose edge keys on FREE→SETTLED, which an
+air-set never produces).
+
+Camera defaults baked from the user's A/B: **DIST 1600, PITCH 35** (was
+2800/60). The old values remain the whole-floor INSPECTION framing —
+`ARENA_CAM_DIST=2800 ARENA_CAM_PITCH=60` reproduces every measurement in the
+8.16/8.17 analysis.
+
+Oracle-gate: ALL GREEN (7/7) on the round-5 build; mode-12 states clean
+(no 42/52, both jump arcs terminate), air-set bombs verified registering,
+falling, settling and fusing out ([bombs] live 0→1→2→1 + [blastvis]).
