@@ -2134,3 +2134,88 @@ kicker, and the hit pose stole the kick clip at frame 15/18 (the gate
 correctly went red; the behavior chain — kick, wall blast, tumble, hit clip
 — was all CORRECT). The probe now kicks into the open side (13 su). A gate
 red after a speed change may be the CHOREOGRAPHY, not the feature.
+
+## 8.32 Feel round 9 (2026-08-01): the carry was never really working
+
+Four reports off the round-8 boot, all four resolved WITHOUT touching the
+sim (pinned hash `04e8af49` holds; no repin this round). New goldens:
+`carry_idle_idx 14`, `carry_walk_anim_idx 17`, `windup_anim_idx 26`,
+`windup_start_frames 62`, `bomb_stand_lift 0.0` / `bomb_stand_supported
+false` / `bomb_stand_xz_gap 30.0`, `set_place_offset 30.0`. All 12 prior
+goldens reproduced byte-identical on the same boots.
+
+**(a) "Feet don't move while holding the bomb" — the carry was broken at the
+root.** `[carryw]` (a new bounded burst in `arena_dbg_anim`: live anim while
+player 0 carries AND moves) showed **clip 41 pinned at frame 2, actionState
+1** every frame. The battle sweep kills the game's own bomb pool
+(`gObjects[2..5] = ACTION_NONE`) EVERY frame — including the bomb the
+walker's carry action just spawned — so the carry state machine aborts and
+re-triggers the pickup clip forever. Vanilla plays carry-idle **14**,
+carry-walk **17** (frames advancing), windup **26**. Fix follows the puppet
+architecture (we already own position, facing, action poses): a **carry pose
+driver** in `arena_bridge_tick_input` holds a rolling 2-frame pose window
+while player 0 carries — idle 14 / walk 17 by sim velocity, windup 26 once
+`timer >= 62` (the golden start) — and yields to any edge pose with a longer
+budget (airset 8, set 10, kick 18, hit 24) and to TUMBLE/DEAD. The walker's
+broken 41 re-trigger is dropped by the same `func_8001C0EC` gate the action
+poses use (§8.23). Knobs: `ARENA_CARRY_IDLE_ANIM`, `ARENA_CARRY_WALK_ANIM`,
+`ARENA_WINDUP_ANIM`, `ARENA_WINDUP_START`.
+
+**(b) "Invisible box on top of a laid bomb" — the ground scan is not the push
+scan.** `[pstand]` (mode 13; tag-13 post-drive Pos.y vs sim y) caught it
+frame-perfect: `f0266 gameY=249 simY=0.076` → `f0268 gameY=450 simY=0.000`.
+The round-6 Y-drive was airborne-only; the moment the sim grounded, the
+walker's OWN grounding reasserted — and its ground scan stands on the
+door-class (`OBJ_TOBIRA1_O`) bomb actors at 210u above the floor.
+`damageState = OBJ_DEATH` blinds the 21E10-style push/interaction scan
+(§8.29) but NOT the ground scan — they filter differently; assume nothing
+transfers between them. Fix: **player 0's Pos.y is sim-driven ALWAYS**. On
+the flat arena floor the sim's grounded Y IS the captured grounding, so full
+ownership costs nothing and retires the whole actor-as-ground class.
+
+**(c) What vanilla actually does when you land on a bomb: NOTHING.** The
+stand-on-bomb oracle choreography (set at the feet, jump straight up, land
+back on it — no run-in, which would kick) measured `playerY` back at **floor
+height**, resting **30u** (one bomb radius) from the bomb centre, full jump
+arc (peak 247.9) undisturbed. Vanilla bombs give **no vertical support** —
+"standing on the bomb at bomb height" (the user's expectation) does not
+exist in the base game; the engine resolves you to the floor beside it. The
+sim already behaves this way, so with (b) the arena is vanilla-exact.
+Backlog polish (golden already measured): a grounded pushout to the vanilla
+30u contact gap, so a dead-centre landing doesn't leave the player inside
+the bomb mesh until his first step (which insta-kicks it clear).
+
+**(d) Air-set pose + charge overlap.** The v17 air set transitions
+FREE→FALLING — the set-pose latch only knew FREE→SETTLED, so no clip ever
+played on an air set (the jump clip just continued). New latch plays the
+golden airset clip (51 × 8f, `[airpose]`). The gate then caught the clip
+persisting 26 frames: after the window closes MID-AIR nobody re-triggers
+anything (the walker's own mini-hop grounded ~20 ticks earlier and it only
+re-asserts on its own state transitions), so the bridge hands the body back
+to the golden JUMP clip (`jump_anim_idx` 6) for the rest of the arc — one
+2-frame trigger, guarded so a stomping edge pose (the hit clip) owns its own
+ending instead. And the round-8 charge-hide keyed
+on the sim timer (`>= TUNE_SPREAD_TICKS`, 120) while the real windmill
+starts at **62 frames** — ~58 ticks of both-hand-bomb-AND-windmill overlap.
+`arena_bomb_active` now also hides on the walker's LIVE anim
+(`g_walker_anim`, latched every frame in `arena_dbg_anim`) matching the
+windup golden — and since the carry driver itself starts the windup at the
+golden 62, hide and visual are synced by construction (`[chargehide]`).
+
+**Clocks, again (the round's instrument lesson):** the input POLL counter
+runs **2:1 against both the oracle frame counter and the sim tick** —
+measured twice independently (oracle phases: op 2100 → n 1050; battle:
+`[throw] t241`@cp350 vs `[setdbg] t306`@cp480 → 130 polls = 65 ticks). The
+first windup extraction returned null because its search window used a
++240-POLL offset in FRAME units — past the phase's end. Windows in
+`main.cpp` are in polls; goldens and sim timers are in frames/ticks; halve
+when crossing.
+
+**Oracle upgrades:** `[oracle] frame` unthrottled (was 1-in-30; playerY is
+now a golden channel), `[oracle-player]` (player pos via the obj export,
+reserved slot 0xFE), round-9 phases `carryB/carrywalk/carryrel`,
+`holdlong/spreadrel`, `setR2/jumpon`. Gate checks 10–13: airset clip
+identity+length (mode 12), carry-walk clip playing with frames advancing,
+`[chargehide]` on the golden windup, and a plateau-based "no invisible box"
+assertion (legal plateaus: floor, plus the golden stand lift only if vanilla
+supported it — it doesn't).
