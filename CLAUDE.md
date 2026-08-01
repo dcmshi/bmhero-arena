@@ -39,7 +39,10 @@ suppressed and Hero's own HUD showing our numbers.
 poses ANIMATE and detonations draw a growing blast ball as of 2026-07-30 (fork
 `b379c94`, §8.23/§8.24); puppets 1–3 are still bomb-mesh placeholders; the
 arena is the Nitros render stand-in, not a purpose-built battle map. Nothing
-since v11 has been feel-verified. Details and priority order: the handoff.
+since v11 has been feel-verified — but as of 2026-08-01 the **objective** half
+of a feel boot is gated automatically against the vanilla game (the single-
+player oracle, §8.26), so the remaining round is a human sign-off on camera
+framing, explosion look and fun. Details and priority order: the handoff.
 
 **Then A3** — online hardening (ROM-free): rendezvous server + lobby codes,
 host-relay fallback, 4P mesh WAN soak, desync surfacing, player-slot assignment.
@@ -69,8 +72,15 @@ tools\tune-report.ps1 -Compare base,friction=0.020,friction=0.045   # pick a val
 tools\gate.ps1                                                      # everything CI runs, one command
 tools\repin.ps1                                                     # rewrite both pins, shows the diff
 <commit, push, bump the submodule in the fork>
-.\build.ps1 -Config rwdi -Soak 5                                    # fork: PATH+patches+build+soak
+.\build.ps1 -Config rwdi -Soak 5                                    # fork: PATH+patches+build+soak+oracle-gate
 ```
+
+On the fork, `-Soak` also runs **`tools\oracle-gate.ps1`**: the arena checked
+against the vanilla game's own numbers in `tools\oracle\goldens.json` — set/kick
+pose index and length, bomb rest lift, throw impact detonation (§8.26). Rerun
+`tools\oracle.ps1` (a scripted vanilla boot) when a new behaviour needs a
+golden. **When a golden and an arena default disagree, the golden wins**, in the
+same commit that turns the gate green.
 
 - `tools/gate.ps1` — all four suites + hash + metrics with CI's exact flags. Run
   it before claiming anything is green.

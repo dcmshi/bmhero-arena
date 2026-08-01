@@ -1750,3 +1750,160 @@ an IDLE player + yaw genuinely orbits, but the idle follow-cam misframes at
 yaw≠0 (unresolved; mode 4 sidesteps it). Strip scripts poll the flushed log
 markers (`[animw]` / `[animsweep]`) to time captures — sub-window precision,
 no input timing.
+
+## §8.26 — The single-player ORACLE: gate the arena against the real game (2026-08-01)
+
+Fork commits `b37b038` → `5cfbc0a`. Feel rounds 1 and 2 each spent a human boot
+to answer questions the *shipped game already answers* — which clip a set plays,
+how high a resting bomb sits, whether a thrown bomb detonates on impact. The
+oracle boots the VANILLA campaign under instrumentation, records those answers
+as checked-in goldens, and gates every arena build against them. What is left
+for the human is what only a human can judge.
+
+### The knob and its precedence
+
+`ARENA_ORACLE=1` boots **vanilla** single-player: `soak_launcher_update` fires
+the same deferred launcher click as the battle soak but skips
+`arena_bridge_set_battle_mode(1)`, so no arena is spawned. If both
+`ARENA_ORACLE` and `ARENA_AUTO_BATTLE` are set, **oracle wins**. The
+`arena_render_routine` probe block is guarded by
+`!arena_bridge_is_battle() && arena_export_oracle_mode()`; with the knob unset
+that costs one export call per frame returning a cached bool, so the block is
+free in every normal build.
+
+**Boot path shipped: the MASH, not a warp.** The synthetic frontend mash
+(4 polls on / 4 off, alternating START/A) walks the frontend into the first
+level and stops itself the moment the level is live (`arena_oracle_seen()`);
+the warp-export fallback in the spec was never needed. The oracle therefore
+runs in **level 0** (recorded in the goldens' provenance).
+
+### What the probe reads (all READ-ONLY, all reusing existing machinery)
+
+Four channels, all stamped with one shared counter `n` that ticks once per
+frame — `arena_export_oracle_frame` runs first, so every line from every channel
+shares one clock and all timing goldens are differences of `n`:
+
+| channel | content | rate |
+|---|---|---|
+| `[oracle] frame` | `level`, player validity, `floorY`, `playerY` | 1 in 30 |
+| `[oracle-anim]` | live clip `idx` / `frame` / `actionState` | every frame |
+| `[oracle-bomb]` | object slots 2–5, active only, `state` + pos | every frame |
+| `[oracle-blast]` | object slots 6–13, same shape | every frame |
+
+`floorY` comes from the game's own ground query `func_80078168` (69AA0.c:205) —
+position in, globals out, exactly as every object's own ground handling calls
+it, so the extra refresh is safe (the mode-7 raster set that precedent). This
+is "measure the geometry, not the player" applied to the oracle: the floor is
+asked for, never inferred from where something came to rest.
+
+### The phase script (main.cpp, `soak_get_n64_input`)
+
+Once in-level, a poll counter drives scripted verbs. The keyboard verbs are the
+user's own discovery while playing: **R sets a bomb** (ground and air), **A
+jumps**, and **running into a set bomb kicks it**.
+
+| op (poll) | phase | what it does |
+|---|---|---|
+| 1 | `in-level` | level is live, mash stops |
+| 300 | `walk` | locomotion baseline |
+| 420 | `stand` | idle baseline |
+| 480 | `dropB` | tap B |
+| 900 / 960 | `holdB` / `releaseB` | grab-hold, then throw |
+| 1260 | `setR` | tap R = **set at feet** (mask **0x0010, CONT_R**) |
+| 1320 / 1360 | `walkoff` / `kickrun` | step clear, then run back in → kick |
+| 1740 / 1752 | `jumpA` / `airsetR` | jump, then R mid-air = air set |
+| 2040 | `DONE` | extraction reads the log |
+
+The poll clock runs at 2× the frame clock, so a marker at op 1260 stamps `n=630`.
+
+Two timings are load-bearing and were measured, not assumed. The set bomb's
+fuse is **106 frames** (set `n=632`, blast `n=738`), which is why walkoff and
+kickrun sit at 1320/1360 rather than the planned 1380/1440 — the plan's kickrun
+began 18 frames after the bomb would already have detonated. And the stick
+signs are inverted from the plan (`-1.0f` drives `+Z`, toward the set bomb), so
+the planned walkoff kicked the bomb early. Kick contact has ~20 frames of slack;
+if extraction ever goes flaky, widen kickrun's UPPER bound (the fuse allows
+about +16), never move its start.
+
+### Goldens: `tools/oracle/goldens.json`
+
+`tools\oracle.ps1` boots with a scrubbed env (only `ARENA_ORACLE`), waits for
+`phase=DONE`, and distils the log. Two rules keep it honest:
+
+- **Nothing observed is hard-coded.** Every clip index and length is measured.
+  Each verb is looked up as "the first contiguous run of a clip that is not what
+  the player was already doing", with the baseline taken from that verb's own
+  phase window: idle for the set, **idle + walk** for the kick (the player is
+  RUNNING at contact, and the clip starts ~8 frames before the bomb moves), idle
+  + hold for the throw, idle + jump for the air set. A single idle baseline
+  returns the locomotion clip and looks perfectly plausible.
+- **Null core fields refuse to write.** `set_anim_idx`, `kick_anim_idx`,
+  `bomb_rest_lift`, `throw_flight_frames` — a silently degraded extraction is a
+  gate that asserts nothing.
+
+`arena_bridge.log` is truncated per run (`fopen "w"`), so the tools delete it
+before a launch and read the WHOLE file after; length-delta scans are unsound.
+World state varies run to run (absolute positions and object counts differ per
+boot), so nothing keys on a coordinate — only on phase markers and state
+sequences. Two independent boots at `e6860d3` produced byte-identical goldens.
+
+**First goldens (fork `e6860d3`, level 0):**
+
+```
+set    idx 31, 10 frames    kick   idx 33, 18 frames, bomb slides (no contact detonation)
+airset idx 51,  8 frames    drop   idx 14,  3 frames (the grab), then the throw clip
+throw  idx 29, 10 frames    flight 24 frames, impact-detonates, arc peak 82
+bomb_rest_lift 30.0 (from the setR bomb: floor 0.00, rest 30.00)
+```
+
+Three of these overturned a documented conclusion:
+
+- **`bomb_rest_lift` = 30.0 exactly**, matching the decomp constant
+  (`69AA0.c:359`) that §8.25 used. This is the instrument validating itself
+  against a value nobody chose — the number to check first if the extraction is
+  ever suspected.
+- **The set clip is 31, not 29.** §8.25 read 29 out of the drop handler
+  statically. The oracle shows 29 is the **throw** clip: it is what a tap-B and
+  a B-release both play (`throw_anim_idx=29`), while a stationary set plays 31.
+  Default flipped to 31.
+- **The kick clip is 33, and it exists.** §8.5c concluded from zero anim calls
+  in `69AA0.c` that the walk-in kick has no animation; §8.25 kept that as the
+  default −1. The composed runtime plays 33 for 18 frames, beginning slightly
+  BEFORE contact. Default flipped to 33.
+
+Each is the same lesson in a new costume: a call-graph read answers "is this
+called *here*", never "what does the game actually play".
+
+### The gate: `tools\oracle-gate.ps1`
+
+Five assertions over three arena boots, every expected value read from the
+goldens — no constant in the gate is one we chose:
+
+| check | probe | assertion |
+|---|---|---|
+| set-pose idx | mode 4 | `[animw]` shows `set_anim_idx`, frame counter advanced |
+| set-pose length | mode 4 | frame count within ±1 of `set_anim_frames` |
+| bomb rest lift | mode 4 | `[setdbg] wy − originY` within 2.0 of `bomb_rest_lift` |
+| kick-pose idx | mode 10 | `[anim]` shows `kick_anim_idx`, counter advanced |
+| throw impact | mode 11 | `[blastvis] t` − `[throw] t` ≤ 1.25 × `throw_flight_frames` |
+
+"Advanced" compares against the MAX sample, not the last: a clip that runs to
+its end wraps its frame counter back to 0, and the naive rising form would fail
+on a healthy full play-through.
+
+`build.ps1 -Soak N` runs the gate automatically after a green soak, and skips
+with a printed notice when no goldens exist. **Falsifiability, proven rather
+than assumed:** `$env:ARENA_SET_ANIM = '3'` makes the gate FAIL both set-pose
+checks and exit 1 — the soak launches inherit the calling shell's env, which is
+exactly what makes the probe work — and clearing it returns ALL GREEN. Rerun
+that pair whenever the gate changes.
+
+### What the oracle does NOT cover
+
+`no_oracle` in the goldens: **camera framing, explosion look, and fun**. Those
+are the human's, and they are now the whole of the human's job in a feel boot.
+Drop, throw, and air-set clips are recorded but ungated — the arena has no
+air-set verb, and the drop/throw poses are not wired arena-side yet; when they
+are, the goldens already hold the answer. Rerun `tools\oracle.ps1` whenever a
+new behaviour needs a reference; it refuses to overwrite differing goldens
+without `-Force`, so drift shows up as a diff rather than a silent rewrite.
