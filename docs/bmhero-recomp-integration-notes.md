@@ -2105,3 +2105,32 @@ first air-set bomb's fuse-out (the previous choreography walked away 38
 ticks before the blast, so no probe had ever exercised the sim's tumble
 in-arena) and the stun must show the golden hit clip at full length.
 `[simpos]` carries `hp0/tm0` for future damage forensics.
+
+## 8.31 Feel round 8 (2026-08-01): the kick outruns the kicker; the charge windmill
+
+Three refinements off the round-7 boot ("this feels really good"):
+
+**Kick speed (sim v18).** The arena's kick (0.14) was SLOWER than running
+(0.151) — the kicker caught the bomb and visually "pushed" it (sim-side the
+kicker grace never cleared, so the overlap just looked like pushing). The
+oracle measured vanilla's slide at **17.89 u/f (~0.149)** — near-parity with
+run, meaning the original prevents the push engine-side. Our design call
+(the user's): `TUNE_KICK_SPEED = 0.165`, decisively above run, so the sim
+prevents it with margin. Golden `kick_slide_speed` records the vanilla
+number for posterity.
+
+**No jump out of the windmill (sim v18).** Once a hold crosses
+`TUNE_SPREAD_TICKS` the walker is winding up the spread; vanilla does not
+let you jump out of it. Short-hold jump-throws stay legal. Test-first.
+
+**The charge hides the held bomb (render).** During the windmill the bomb
+is not in the hands — `arena_bomb_active` hides the held actor once the
+owner's hold timer crosses the spread threshold; it reappears as the fan.
+
+**Probe fallout worth remembering:** v18's faster bomb turned mode-10's
+choreography into self-immolation — the bomb reached the NEAR wall (2.4 su)
+in 15 ticks with the kicker still walking toward it, the blast tumbled the
+kicker, and the hit pose stole the kick clip at frame 15/18 (the gate
+correctly went red; the behavior chain — kick, wall blast, tumble, hit clip
+— was all CORRECT). The probe now kicks into the open side (13 su). A gate
+red after a speed change may be the CHOREOGRAPHY, not the feature.
