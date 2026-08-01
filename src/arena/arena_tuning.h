@@ -120,7 +120,12 @@
 #define TUNE_SPREAD_UP       Q(0.055)   /* 30deg pitch ratio */
 #endif
 #ifndef TUNE_KICK_SPEED
-#define TUNE_KICK_SPEED      Q(0.14)
+#define TUNE_KICK_SPEED      Q(0.165)   /* v18: > run (0.151) so the kicker can't
+                                         * catch and "push" the bomb (feel round 8).
+                                         * Vanilla measured 17.89 u/f = ~0.149 (oracle
+                                         * kick_slide_speed) - near-PARITY with run;
+                                         * the original prevents the push differently,
+                                         * our sim prevents it with margin. Was 0.14. */
 #endif
 #ifndef TUNE_KICK_MIN_VEL
 #define TUNE_KICK_MIN_VEL    Q(0.02)    /* walk-in kick needs real movement */
@@ -205,7 +210,15 @@
 
 /* Bump when any value changes; folded into the session version hash. */
 #ifndef TUNE_VERSION
-#define TUNE_VERSION         17     /* 2026-08-01: (v17) air-set bombs DROP from the hands
+#define TUNE_VERSION         18     /* 2026-08-01: (v18) feel round 8: KICK_SPEED
+                                     * 0.14 -> 0.165 (> run 0.151; the kicker could
+                                     * catch and push the bomb - vanilla measured
+                                     * ~0.149, near-parity, and prevents the push
+                                     * engine-side; we prevent it with margin), and
+                                     * NO JUMP WHILE CHARGING the spread (hold >=
+                                     * TUNE_SPREAD_TICKS = the windmill; short-hold
+                                     * jump-throws stay legal, like vanilla).
+                                     * 2026-08-01: (v17) air-set bombs DROP from the hands
                                      * (new BSTATE_FALLING, appended): straight-down fall,
                                      * SETTLES on landing (never impact-detonates), fuse
                                      * burns from the set edge, blast-chainable while

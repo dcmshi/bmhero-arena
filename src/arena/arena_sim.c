@@ -224,9 +224,13 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
         p->vel.z = -qmul(qcos(p->yaw), speed);
     }
 
-    /* jump (edge) */
+    /* jump (edge). Holding a bomb keeps the jump legal (vanilla jump-throws),
+     * but once the hold crosses TUNE_SPREAD_TICKS the player is WINDING UP
+     * the spread (the windmill) and vanilla does not let you jump out of it
+     * (v18, feel round 8). */
     if (gameplay && p->state != PSTATE_TUMBLE && on_ground(p)
-        && arena_input_jump(in) && !arena_input_jump(prev)) {
+        && arena_input_jump(in) && !arena_input_jump(prev)
+        && !(p->held_bomb && p->timer >= TUNE_SPREAD_TICKS)) {
         p->vel.y = TUNE_JUMP_IMPULSE;
         p->state = PSTATE_JUMP;
     }

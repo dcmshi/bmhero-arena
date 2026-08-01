@@ -379,6 +379,27 @@ static void test_set_ignored_while_holding(void) {
           "set is ignored while holding a bomb");
 }
 
+static void test_no_jump_while_charging(void) {
+    /* v18: once the hold crosses TUNE_SPREAD_TICKS the walker is winding up
+     * the 4-bomb spread (windmilling) - vanilla does not let you jump out of
+     * that (feel round 8). A jump DURING a short hold stays legal (vanilla
+     * jump-throws). */
+    ArenaState s;
+    start2(&s);
+    run(&s, arena_input_pack(0, 0, 0, 1, 0), 3);              /* grab */
+    run(&s, arena_input_pack(0, 0, 1, 1, 0), 1);              /* jump while holding */
+    CHECK(s.players[0].state == PSTATE_JUMP,
+          "jump WHILE HOLDING (short hold) is legal - vanilla jump-throws");
+    /* land, then charge past the spread threshold and try to jump */
+    run(&s, arena_input_pack(0, 0, 0, 1, 0), 60);             /* land, keep holding */
+    CHECK(s.players[0].pos.y == 0, "back on the ground");
+    run(&s, arena_input_pack(0, 0, 0, 1, 0), TUNE_SPREAD_TICKS);  /* charge */
+    run(&s, arena_input_pack(0, 0, 1, 1, 0), 1);              /* jump press mid-charge */
+    CHECK(s.players[0].state != PSTATE_JUMP && s.players[0].pos.y == 0,
+          "no jump while CHARGING the spread (state=%d y=%d)",
+          s.players[0].state, s.players[0].pos.y);
+}
+
 int main(void) {
     test_throw_fixed_arc();
     test_throw_impact_detonates();
@@ -389,6 +410,7 @@ int main(void) {
     test_fuse_pops_mid_slide();
     test_set_works_midair();
     test_set_ignored_while_holding();
+    test_no_jump_while_charging();
     if (failures) { printf("%d FAILURES\n", failures); return 1; }
     printf("bomb_mechanics: ALL TESTS PASSED\n");
     return 0;
