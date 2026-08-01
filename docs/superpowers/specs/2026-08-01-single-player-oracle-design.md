@@ -57,7 +57,7 @@ build-hash + date provenance). v1 fields:
 | `drop_anim_idx`, `drop_anim_frames` | clip + observed length on stationary drop |
 | `throw_anim_idx`, `throw_anim_frames` | clip + length on throw |
 | `bomb_rest_lift` | bombY − floorY at rest |
-| `throw_impact_detonates` | explosion within N frames of contact, not the fuse |
+| `throw_impact_detonates` | explosion ≤ 5 polls after the arc's last airborne sample, AND total flight < 60 polls (a fuse-out would be ≥ 150) |
 | `throw_flight_frames`, `throw_arc_peak` | flight envelope |
 
 Re-runs diff before overwriting (the `repin.ps1` pattern). Behaviors with **no
@@ -75,6 +75,10 @@ bomb render lift == `bomb_rest_lift`; mode-11 throw shows
 the game, not from constants we chose. All timing goldens live in the
 poll-counter clock on both sides (the ~45-tick poll/tick skew never crosses
 the comparison).
+
+If a golden disagrees with a current arena default (e.g. the oracle logs a
+different drop clip than 29), the ARENA DEFAULT CHANGES to match the golden —
+that is the point of the oracle. The gate is updated in the same commit.
 
 ## 5. Validation of the instrument (before trusting any golden)
 
