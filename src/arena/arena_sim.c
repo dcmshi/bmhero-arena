@@ -489,17 +489,21 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
                 }
             }
             if (b->state != BSTATE_AIRBORNE) break;
-            /* walls / pillars: any pushback = contact = detonate (was: walls
-             * stop bombs) */
+            /* walls / pillars / FLOOR: any pushback = contact = detonate.
+             * y IS in the compare (v16): collide_static also floor-clamps
+             * (pos.y -> 0, vel.y -> 0), and v15 compared only x/z - so the
+             * clamp ate the floor contact before the y<=0 check below could
+             * see vel.y < 0, and the bomb glided along the floor to the
+             * nearest wall (feel round 4: "slides instead of detonating"). */
             {
                 Vec3q pre_p = b->pos, pre_v = b->vel;
                 collide_static(&b->pos, &b->vel, TUNE_BOMB_RADIUS, g, wall_x, wall_z);
-                if (b->pos.x != pre_p.x || b->pos.z != pre_p.z
-                    || b->vel.x != pre_v.x || b->vel.z != pre_v.z)
+                if (b->pos.x != pre_p.x || b->pos.y != pre_p.y || b->pos.z != pre_p.z
+                    || b->vel.x != pre_v.x || b->vel.y != pre_v.y || b->vel.z != pre_v.z)
                     b->state = BSTATE_EXPLODING;
             }
             if (b->state != BSTATE_AIRBORNE) break;
-            /* floor: contact -> detonate at ground level */
+            /* floor, exact touch (pos.y lands on 0 without the clamp firing) */
             if (b->pos.y <= 0 && b->vel.y < 0) {
                 b->pos.y = 0;
                 b->state = BSTATE_EXPLODING;

@@ -205,7 +205,15 @@
 
 /* Bump when any value changes; folded into the session version hash. */
 #ifndef TUNE_VERSION
-#define TUNE_VERSION         15     /* 2026-07-30: (v15) thrown bombs IMPACT-DETONATE.
+#define TUNE_VERSION         16     /* 2026-08-01: (v16) thrown bombs detonate on OPEN-FLOOR
+                                     * impact. v15's wall-contact compare ignored y while
+                                     * collide_static floor-clamped (pos.y->0, vel.y->0), so
+                                     * the y<=0 && vel.y<0 floor check never fired and a bomb
+                                     * landing on open floor GLIDED to the nearest wall (feel
+                                     * round 4: "slides along the floor instead of
+                                     * detonating"). y is now in the pushback compare; no
+                                     * tuning VALUE changed - this is a rules fix.
+                                     * 2026-07-30: (v15) thrown bombs IMPACT-DETONATE.
                                      * An AIRBORNE bomb now explodes on contact with
                                      * anything - player, ground bomb, wall, floor - like
                                      * the real game's thrown bombs ("for throwing the

@@ -203,6 +203,38 @@ static void test_throw_impact_detonates(void) {
         }
     }
     CHECK(hit, "the bomb reached the wall within 60 ticks");
+
+    /* (c) OPEN-FLOOR impact must detonate ON contact, not glide. Regression
+     * found by eye in feel round 4 (v15): collide_static's floor clamp zeroes
+     * vel.y before the floor check reads it, and the wall compare ignored y -
+     * a bomb landing on open floor became a floor-glider at constant
+     * horizontal speed until it found a wall. Sub-test (a) and the mode-11
+     * gate both stayed green because the arena is small enough that the wall
+     * always arrived inside their bounds - the discriminator is WHERE (and
+     * how soon) the blast is born. Ballistic here: fall from y=1.4 at
+     * g=0.0175 is ~13 ticks, range ~13 x 0.18 = 2.3u; a glide only ends at
+     * the wall (~7.3u, ~40 ticks). */
+    start2(&s);
+    s.bombs[0].state   = BSTATE_AIRBORNE;
+    s.bombs[0].owner   = 0;
+    s.bombs[0].bounced = 0;
+    s.bombs[0].pos.x = 0;         s.bombs[0].pos.y = Q(1.4); s.bombs[0].pos.z = 0;
+    s.bombs[0].vel.x = Q(0.18);   s.bombs[0].vel.y = 0;      s.bombs[0].vel.z = 0;
+    s.players[0].live_bombs = 1;
+    int floored = 0;
+    for (int t = 0; t < 60 && !floored; t++) {
+        run(&s, NEUTRAL, 1);
+        if (s.bombs[0].state != BSTATE_AIRBORNE) {
+            floored = 1;
+            CHECK(s.bombs[0].state == BSTATE_FREE, "open-floor impact detonates");
+            CHECK(t <= 20, "detonates ON impact, no glide (tick %d)", t);
+            CHECK(s.bombs[0].pos.x < Q(4.0),
+                  "detonates at ballistic range, not at a wall (x=%d)",
+                  s.bombs[0].pos.x);
+            CHECK(s.bombs[0].pos.y == 0, "at ground level (y=%d)", s.bombs[0].pos.y);
+        }
+    }
+    CHECK(floored, "open-floor impact detonates within 60 ticks");
 }
 
 static void test_set_and_walkin_kick_wall(void) {
