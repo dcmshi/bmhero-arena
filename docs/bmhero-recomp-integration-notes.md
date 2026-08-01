@@ -1932,3 +1932,79 @@ air-set verb, and the drop/throw poses are not wired arena-side yet; when they
 are, the goldens already hold the answer. Rerun `tools\oracle.ps1` whenever a
 new behaviour needs a reference; it refuses to overwrite differing goldens
 without `-Force`, so drift shows up as a diff rather than a silent rewrite.
+
+## 8.27 Feel round 4 (2026-08-01): button ownership, the walker's push reaction, and v16
+
+Four reports from the first oracle-gated feel boot; every objective one traced
+to a root cause the gates now cover.
+
+### The throw glide (sim, v16)
+
+v15's AIRBORNE wall check compared only x/z around `collide_static`, but
+`collide_static` also floor-clamps (`pos.y -> 0`, `vel.y -> 0`) — so the floor
+contact was consumed before the `y<=0 && vel.y<0` floor check could see it,
+and a bomb landing on open floor became a floor-glider at constant horizontal
+speed until it found a wall. Sub-test (a) and the mode-11 gate stayed green
+because the arena is small enough that the wall always arrived inside their
+bounds — the discriminator (test (c), v16) is WHERE and how soon the blast is
+born. Fix: y joined the pushback compare. Verified live: `[throw] t215 ->
+[blastvis] t231`, a pure 16-tick flight. The "kick feels slower" report was
+almost certainly these gliding throws being read as kicks: kick tuning never
+changed, and the glide is gone.
+
+### The air-set fly-off (fork): TWO mechanisms, one report
+
+1. **The press-edge leak.** Battle "took the buttons away" by zeroing
+   `gActiveContButton` at routine entry — but the game latches press EDGES at
+   poll time (`gActiveContPressed` and the per-port copies), so every edge
+   consumer still fired. A real keyboard R press ran the game's OWN set
+   action on the puppet mid-air. Fix: B/Z/R are stripped at the INPUT POLL
+   (main.cpp input callback), before any game code can copy or edge-detect
+   them; the sim reads the pre-strip mask from a native latch
+   (`arena_export_latched_buttons`, 0x8F000260). A intentionally passes
+   through — the walker's own jump is the only visible jump (player Y is
+   game-driven) and it terminates cleanly. R now also maps to the sim's set
+   (it is the vanilla game's own set button, goldens `set_button_mask`).
+2. **The walker's solid-object reaction.** With buttons provably stripped
+   (`pressed=0x0000` in the probe), the walker STILL entered actionState 42 —
+   PUSH (the `MAP_MOVE_STONE` push block keys on exactly 42) — whenever a
+   bomb actor overlapped it, and CARRY-SQUASH (52) with a held bomb at head
+   height. Entered mid-air, the push suspends the fall; while running into a
+   set bomb it re-pins every frame and stomps the kick clip. **Five
+   suppression channels were measured and ruled out**: the poll strip, the
+   21E10 interaction pairing (patched off — REVERTED, `func_80021210` is a
+   general "free to act" predicate with ten more callers and battle-0 stalled
+   the jump), the pose trigger, the borrowed class's `behaviour()` (the
+   dispatcher `func_8002B154` now skips it for actor slots in battle — kept,
+   it is right on principle), and `damageState = OBJ_DEATH`. The writer is in
+   the PLAYER OVERLAY's own collision scan (not decompiled). **Containment**:
+   in battle the routine resets player 42/52 to idle the same frame — the
+   walker re-derives locomotion next frame, the push-lock cannot pin the
+   kick clip, and any fall-suspension is capped at one frame. Mode-12 probe:
+   zero 42/52 samples, both jump arcs terminate (gameY 240 -> 354 -> 240).
+   **Open RE item:** find the overlay's solid-object scan and gate it
+   properly; the containment is a gDebugInvincibileFlag-class measure, not a
+   root fix.
+
+### The kick clip cut short (fork)
+
+One shared pose window (10 frames, the SET clip's length) served both verbs;
+the kick clip is 18 frames, so it cut off 10/18 through and the walker stomped
+the rest. `arena_kick_pose_frames()` (env `ARENA_KICK_POSE_FRAMES`, default =
+the golden 18) now drives the kick window.
+
+### New gates (oracle-gate.ps1, now 7 checks)
+
+Check 4 grew a full-clip length assertion (golden `kick_anim_frames` ± 2);
+check 7 boots mode 12 (jump + air-set + moving set) and asserts the `[airset]`
+channel is alive with ZERO 42/52 samples. Backlog for the next oracle run:
+extract the vanilla kick SLIDE SPEED and air-set fall arc as goldens and gate
+the arena's kick speed against the game's own number.
+
+### Probe infrastructure added
+
+Mode 12 (`ARENA_AUTO_BATTLE=12`): jump, set at apex, moving set — the
+`[airset]` channel logs `gameY/simY/state/pair/pressed` every other frame
+(dbg_cam tag 7/8; tag 8's y/z were repurposed for pairing + pressed masks).
+The five ruled-out channels above were each ruled out by a field in this line
+— when a state misbehaves, extend the line before theorizing.
