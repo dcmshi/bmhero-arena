@@ -290,11 +290,13 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
         }
     }
 
-    /* set (edge on bit 14): lay a bomb at the ground under the player.
-     * Works mid-air (authentic: Hero speedruns lay bombs in midair). The
-     * setter gets grace (bounced = idx+1) so standing on it doesn't
-     * immediately walk-in kick it. Kicking = running into a settled bomb
-     * (see BSTATE_SETTLED in the bomb phase). */
+    /* set (edge on bit 14): lay a bomb at the player. Works mid-air
+     * (authentic: Hero speedruns lay bombs in midair) - and since v17 an
+     * air-set DROPS from the hands and settles on landing (feel round 5:
+     * "it should drop to the ground", matching the vanilla air-set, whose
+     * bomb the oracle saw born airborne at Y~185). The setter gets grace
+     * (bounced = idx+1) so standing on it doesn't immediately walk-in kick
+     * it. Kicking = running into a settled bomb (BSTATE_SETTLED phase). */
     if (gameplay && p->state != PSTATE_TUMBLE && p->held_bomb == 0
         && arena_input_set(in) && !arena_input_set(prev)
         && p->live_bombs < TUNE_MAX_LIVE_BOMBS) {
@@ -303,9 +305,14 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
             ArenaBomb* b = &s->bombs[bi];
             memset(b, 0, sizeof(*b));
             b->owner   = (uint8_t)pi;
-            b->state   = BSTATE_SETTLED;
             b->fuse    = TUNE_FUSE_TICKS;
-            b->pos     = p->pos; b->pos.y = 0;
+            b->pos     = p->pos;
+            if (p->pos.y > 0) {
+                b->state = BSTATE_FALLING;       /* drops from the hands */
+            } else {
+                b->state = BSTATE_SETTLED;
+                b->pos.y = 0;
+            }
             b->bounced = (uint8_t)(pi + 1);     /* setter grace */
             p->live_bombs++;
         }
@@ -510,6 +517,22 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
             }
             break;
         }
+        case BSTATE_FALLING: {
+            /* v17 air-set drop: straight down from the setter's hands, then
+             * SETTLES (unlike a THROWN bomb, which impact-detonates). No
+             * contact checks while falling - it is a settle-in-progress; the
+             * fuse burns from the set edge, same as a grounded set. */
+            b->vel.y -= TUNE_GRAVITY;
+            b->pos.y += b->vel.y;
+            if (b->pos.y <= 0) {
+                b->pos.y = 0;
+                b->vel.y = 0;
+                b->state = BSTATE_SETTLED;
+            }
+            if (b->fuse > 0) b->fuse--;
+            if (b->fuse == 0) b->state = BSTATE_EXPLODING;
+            break;
+        }
         case BSTATE_SLIDING: {
             b->pos.x += b->vel.x; b->pos.z += b->vel.z;
             /* players: contact detonates (kicker skipped until clear) */
@@ -602,7 +625,8 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
         for (int bi = 0; bi < ARENA_MAX_BOMBS; bi++) {
             ArenaBomb* b = &s->bombs[bi];
             if (b->state != BSTATE_SETTLED && b->state != BSTATE_AIRBORNE
-                && b->state != BSTATE_SLIDING) continue;
+                && b->state != BSTATE_SLIDING && b->state != BSTATE_FALLING)
+                continue;
             Vec3q d = { b->pos.x - bl->center.x, b->pos.y - bl->center.y,
                         b->pos.z - bl->center.z };
             if (qlen3(d) < radius + TUNE_BOMB_RADIUS) b->state = BSTATE_EXPLODING;

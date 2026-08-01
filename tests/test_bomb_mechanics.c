@@ -340,12 +340,31 @@ static void test_set_works_midair(void) {
     run(&s, arena_input_pack(0, 0, 0, 0, 0), 8);      /* rising */
     CHECK(s.players[0].pos.y > 0, "player is airborne");
     run(&s, arena_input_pack(0, 0, 0, 0, 1), 1);      /* set mid-air */
+    /* v17: the bomb DROPS from the hands and settles on landing (feel round
+     * 5: "it shouldn't immediately appear on the floor, it should drop") -
+     * the vanilla air-set births the bomb airborne (oracle airsetR, Y~185). */
     int bi = -1;
     for (int i = 0; i < ARENA_MAX_BOMBS; i++)
-        if (s.bombs[i].state == BSTATE_SETTLED) { bi = i; break; }
-    CHECK(bi >= 0, "mid-air set places a bomb");
-    if (bi >= 0)
-        CHECK(s.bombs[bi].pos.y == 0, "bomb lands on the ground below");
+        if (s.bombs[i].state == BSTATE_FALLING) { bi = i; break; }
+    CHECK(bi >= 0, "mid-air set DROPS a bomb (FALLING, not floor-teleport)");
+    if (bi < 0) return;
+    CHECK(s.bombs[bi].pos.y > 0,
+          "the dropped bomb starts at the player, not the floor (y=%d)",
+          s.bombs[bi].pos.y);
+    int landed = 0;
+    for (int t = 0; t < 120 && !landed; t++) {
+        run(&s, NEUTRAL, 1);
+        uint8_t st = s.bombs[bi].state;
+        if (st == BSTATE_SETTLED) {
+            landed = 1;
+            CHECK(s.bombs[bi].pos.y == 0, "settles ON the floor");
+        } else {
+            CHECK(st == BSTATE_FALLING,
+                  "a falling set never impact-detonates (state=%d t=%d)", st, t);
+            if (st != BSTATE_FALLING) return;
+        }
+    }
+    CHECK(landed, "the dropped bomb settles within 120 ticks");
 }
 
 static void test_set_ignored_while_holding(void) {

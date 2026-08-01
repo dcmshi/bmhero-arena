@@ -205,7 +205,15 @@
 
 /* Bump when any value changes; folded into the session version hash. */
 #ifndef TUNE_VERSION
-#define TUNE_VERSION         16     /* 2026-08-01: (v16) thrown bombs detonate on OPEN-FLOOR
+#define TUNE_VERSION         17     /* 2026-08-01: (v17) air-set bombs DROP from the hands
+                                     * (new BSTATE_FALLING, appended): straight-down fall,
+                                     * SETTLES on landing (never impact-detonates), fuse
+                                     * burns from the set edge, blast-chainable while
+                                     * falling. Was: teleport to the floor ("it shouldn't
+                                     * immediately appear on the floor", feel round 5;
+                                     * vanilla's air-set bomb is born airborne - oracle
+                                     * airsetR, Y~185). Grounded sets unchanged.
+                                     * 2026-08-01: (v16) thrown bombs detonate on OPEN-FLOOR
                                      * impact. v15's wall-contact compare ignored y while
                                      * collide_static floor-clamped (pos.y->0, vel.y->0), so
                                      * the y<=0 && vel.y<0 floor check never fired and a bomb

@@ -42,7 +42,12 @@ static inline int arena_input_set(ArenaInput i)  { return (i >> 14) & 1; }
 /* ---- enums (u8 in state) ---- */
 enum { PSTATE_IDLE, PSTATE_RUN, PSTATE_JUMP, PSTATE_TUMBLE, PSTATE_DEAD };
 enum { BSTATE_FREE, BSTATE_HELD, BSTATE_AIRBORNE, BSTATE_SETTLED, BSTATE_EXPLODING,
-       BSTATE_SLIDING };
+       BSTATE_SLIDING,
+       /* v17: an air-set bomb DROPS from the setter's hands and settles on
+        * landing (vanilla behavior; the oracle's airsetR bomb is born at
+        * Y~185, airborne). Unlike AIRBORNE (a throw), it never
+        * impact-detonates. Appended so prior values keep their numbers. */
+       BSTATE_FALLING };
 enum { PHASE_COUNTDOWN, PHASE_PLAY, PHASE_SUDDEN_DEATH, PHASE_ROUND_END };
 
 typedef struct {                 /* 44 bytes */
