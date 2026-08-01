@@ -2043,3 +2043,41 @@ Camera defaults baked from the user's A/B: **DIST 1600, PITCH 35** (was
 Oracle-gate: ALL GREEN (7/7) on the round-5 build; mode-12 states clean
 (no 42/52, both jump arcs terminate), air-set bombs verified registering,
 falling, settling and fusing out ([bombs] live 0→1→2→1 + [blastvis]).
+
+## 8.29 Feel round 6 (2026-08-01): the held bomb's hands, and the jump desync
+
+Two reports off the round-5 boot; both root-caused with the probe channels.
+
+**The held bomb drew ON Bomberman's head.** The sim tracks a held bomb at
+head height (owner + `TUNE_PLAYER_HEIGHT` = 120 world units) and the render
+added the 30-unit rest lift on top. The vanilla game holds its bomb **50
+units above the player's feet** — measured directly from the oracle's holdB
+window (`[oracle-bomb] y=50.0` with `playerY=0.00`) — so `arena_bomb_wy`
+now returns owner-feet + 50 for `BSTATE_HELD`. Render-side only; the sim's
+hash-covered tracking height is unchanged.
+
+**A mid-air set looked like it killed the jump ("he should continue his
+same jump momentum").** The deep cause is a JUMP DESYNC that predates every
+set change: the walker's own jump is a fixed mini-hop — gameY 240→327→240
+in ~10 frames, HOLD-INDEPENDENT (measured with A held 24 polls) — while the
+sim's authoritative arc runs ~32 ticks to ~254 units. The visible player
+landed ~20 ticks before the sim did, so anything you did "mid-air" happened
+next to an already-landed body. Fix: **player 0's `Pos.y` is driven from
+the sim while the sim is airborne** (`arena_puppet_wy` now maps sim y; the
+post-update drive writes it alongside X/Z), handing Y back to the game's
+own grounding the moment the sim lands. Verified: `[ydrive]` tracks
+240→494→240, exactly `240 + simY*120`. En route, two latent stubs fell:
+`arena_get_player_y` had returned a hardcoded 0 since A1.2a ("Y left to
+game"), and the 42-containment now restores last frame's `Vel.y` along
+with the state (the push entry clobbers the walker's vertical motion).
+
+**Instrument lesson (again):** the first three probe rounds "showed" the
+Y-drive not working because the `[airset]` gameY is sampled at routine
+entry — AFTER the game re-grounds, BEFORE the drive writes. A channel that
+samples at the write site (`[ydrive]`, tag 13) settled it in one boot.
+Where a value is written matters as much as what is written — sample at
+the write.
+
+**Gate:** oracle-gate check 8 asserts the driven Y reaches the sim's apex
+region (peak ≥ 420 of ~494) from the existing mode-12 boot — a regression
+back to the mini-hop goes red with no extra boot cost.
