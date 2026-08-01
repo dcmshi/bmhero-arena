@@ -828,3 +828,87 @@ git commit -m "docs+chore: oracle notes; submodule bump"
 ```
 
 Do NOT push either repo — both stay local pending the user's word.
+
+---
+
+## Amendment A (2026-08-01, mid-execution) — R-set / air-set / walk-in kick
+
+**Trigger:** user discovery while playing: keyboard **R = bomb SET** (works on
+the ground AND in the air), **space = jump**; **running into a set bomb KICKS
+it**. Hero therefore has native references for the arena's set pose, kick pose,
+and an air set — all three move from "no-oracle: human judgment" to golden-able.
+Also folds in two empirical Task-3 findings: `arena_bridge.log` is TRUNCATED
+per run (`fopen "w"`), so tools read the whole file (never `-Skip $pre`
+delta-scans); and run-to-run world state varies, so goldens key on phase
+markers + state sequences, never absolute positions or object counts.
+
+### A1 — Task 3 extension (phase script)
+
+Replace `if (op == 1260) arena_oracle_phase("DONE");` with:
+
+```cpp
+            if (op >= 1260 && op < 1264) {               /* tap R: SET at feet */
+                *buttons |= 0x0010;                       /* CONT_R */
+                if (op == 1260) arena_oracle_phase("setR");
+            }
+            /* 1264-1380: observe - set anim + bomb at rest */
+            if (op >= 1380 && op < 1440) {               /* step clear of the set bomb */
+                *y = -1.0f;
+                if (op == 1380) arena_oracle_phase("walkoff");
+            }
+            if (op >= 1440 && op < 1560) {               /* run back in -> KICK */
+                *y = 1.0f;
+                if (op == 1440) arena_oracle_phase("kickrun");
+            }
+            /* 1560-1740: observe - kick anim + bomb slide */
+            if (op >= 1740 && op < 1746) {               /* jump ... */
+                *buttons |= 0x8000;                       /* CONT_A */
+                if (op == 1740) arena_oracle_phase("jumpA");
+            }
+            if (op >= 1752 && op < 1756) {               /* ... R mid-air: AIR SET */
+                *buttons |= 0x0010;
+                if (op == 1752) arena_oracle_phase("airsetR");
+            }
+            if (op == 2040) arena_oracle_phase("DONE");
+```
+
+Verify from the trace that `setR` produces a bomb at the player's feet with no
+throw arc. If mask `0x0010` (CONT_R) produces nothing, try `0x2000` (Z) once
+and record which mask is the set button. If the set bomb's fuse expires before
+`kickrun` contact, shorten the walkoff/kickrun windows (keep the phase-name
+strings) and record the change.
+
+### A2 — Task 4 (extraction) changes
+
+- Read the WHOLE log after the run (truncation finding above).
+- New PhaseN markers: `setR`, `walkoff`, `kickrun`, `jumpA`, `airsetR`.
+- New extractions (same ClipAfter mechanism):
+  `set_anim` = ClipAfter(n(setR));
+  `kick_anim` = first clip in [n(kickrun), n(kickrun)+150] that is neither the
+  idle baseline NOR the walk baseline (dominant idx during the `walk` phase —
+  the player is MOVING at kick contact, so the idle filter alone is wrong);
+  `airset_anim` = ClipAfter(n(airsetR)) excluding the jump clip (dominant idx
+  in [n(jumpA), n(airsetR)]).
+- `bomb_rest_lift`: prefer the `setR` bomb (a true stationary set); keep the
+  `dropB` extraction as fallback.
+- New goldens fields: `set_anim_idx`/`set_anim_frames`,
+  `kick_anim_idx`/`kick_anim_frames`, `airset_anim_idx`/`airset_anim_frames`,
+  `set_button_mask` (string, e.g. "0x0010"), `kick_slide` (bool: the kicked
+  bomb moves horizontally after contact rather than detonating on it).
+- Core null-refusal list becomes: `set_anim_idx`, `kick_anim_idx`,
+  `bomb_rest_lift`, `throw_flight_frames`.
+- `no_oracle` shrinks to: camera framing / explosion look / fun. Drop, throw,
+  and air-set anims are recorded but ungated (the arena has no air-set verb
+  yet; drop/throw poses are not wired arena-side).
+
+### A3 — Task 5 (gate) changes
+
+- The set-pose gate keys on **`set_anim_idx`** (the R-set clip), NOT
+  `drop_anim_idx`.
+- ADD a kick gate: `arena-soak.ps1 -N 1 -Mode 10 -Rising "\[anim\] idx=$($g.kick_anim_idx) frame=(\d+)"`
+  (mode 10 is the existing walk-in kick probe; `[anim]` is its burst channel).
+- Defaults flip per the spec rule, in the same commit that turns the gate
+  green: `arena_set_anim_index()` default (currently 29) → `set_anim_idx`
+  golden; `arena_kick_anim_index()` default (currently −1) → `kick_anim_idx`
+  golden; `ARENA_POSE_FRAMES` default (10) → `set_anim_frames` golden if it
+  differs.

@@ -32,7 +32,10 @@ Env knob `ARENA_ORACLE=1`:
   entry the way the Battle option was built) instead of tuning mash timings.
 - **Scripted input phases** (poll-counter based, same pattern as modes
   4/10/11): walk → stand → B (drop) → wait for detonation → hold-release B
-  (throw at floor) → wait for impact → `[oracle] DONE`.
+  (throw at floor) → wait for impact → R (SET at feet) → walk off → run back
+  in (KICK) → jump + R (AIR SET) → `[oracle] DONE`. (Amended 2026-08-01: the
+  user found R = set, ground and air, and that running into a set bomb kicks
+  it — Hero has native set/kick references after all.)
 
 Instrumentation is logging only — zero behavior change, zero sim changes
 (pinned hash untouched):
@@ -59,16 +62,25 @@ build-hash + date provenance). v1 fields:
 | `bomb_rest_lift` | bombY − floorY at rest |
 | `throw_impact_detonates` | explosion ≤ 5 polls after the arc's last airborne sample, AND total flight < 60 polls (a fuse-out would be ≥ 150) |
 | `throw_flight_frames`, `throw_arc_peak` | flight envelope |
+| `set_anim_idx`, `set_anim_frames` | clip + length on R-set (ground) — the arena set pose's true reference |
+| `kick_anim_idx`, `kick_anim_frames` | clip + length on walk-in kick of a set bomb |
+| `airset_anim_idx`, `airset_anim_frames` | clip + length on mid-air R-set (recorded; ungated until the arena has the verb) |
+| `set_button_mask`, `kick_slide` | which N64 mask sets; whether the kicked bomb slides rather than detonating on contact |
 
-Re-runs diff before overwriting (the `repin.ps1` pattern). Behaviors with **no
-single-player equivalent** (kick, classic set-on-ground) are listed in the
-file explicitly as `"no-oracle: human judgment"` — the human-verdict surface
-is documented, not implicit.
+Re-runs diff before overwriting (the `repin.ps1` pattern). The `no_oracle`
+list (behaviors with no single-player reference, left to human judgment) is
+down to aesthetics only — camera framing, explosion look, fun — after the
+2026-08-01 R-set/kick discovery. Tooling note (empirical, Task 3):
+`arena_bridge.log` is TRUNCATED per run, so oracle tooling reads the whole
+file; and run-to-run world state varies, so extraction keys on phase markers
+and state sequences, never absolute positions or object counts.
 
 ## 4. Arena gates against goldens
 
 `tools\oracle-gate.ps1` reads goldens and asserts the ARENA's existing logs
-match: set pose plays `drop_anim_idx` for `drop_anim_frames` exactly once;
+match: set pose plays `set_anim_idx` for `set_anim_frames` exactly once
+(amended 2026-08-01 — the R-set clip is the arena set's true reference, not
+the B-drop clip); kick pose plays `kick_anim_idx` (mode-10 walk-in probe);
 bomb render lift == `bomb_rest_lift`; mode-11 throw shows
 `[throw]→[blastvis]` inside the flight envelope (±25 % band), never the
 150-tick fuse. Trap #1 satisfied by construction: expected values come from
