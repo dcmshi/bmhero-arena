@@ -2081,3 +2081,27 @@ the write.
 **Gate:** oracle-gate check 8 asserts the driven Y reaches the sim's apex
 region (peak ≥ 420 of ~494) from the existing mode-12 boot — a regression
 back to the mini-hop goes red with no extra boot cost.
+
+## 8.30 Feel round 7 (2026-08-01): the carry anchor, and the stun's hit clip
+
+**"Holding empty air."** Round 6 put the held bomb at hands HEIGHT (feet+50)
+but not in the hands: without a forward offset it rendered inside the torso.
+The decomp's carry handler (69AA0.c `func_8007A938`) is explicit:
+`x += sin(Rot.y)*32, z += cos(Rot.y)*32, y += 50` — 32 units in front along
+facing. `arena_bomb_wx/wy/wz` now reproduce the full anchor for
+`BSTATE_HELD` (Rot.y = 180 − sim yaw, the A1.2e mapping).
+
+**The stun showed locomotion.** The sim owns damage, so the game never
+played its hit reaction. The oracle already had the answer in every trace:
+the air-set bomb fuses out at the setter's feet, and the blast's knockback
+plays the game's own hit clip — **idx 43, 24 frames** (new goldens
+`hit_anim_idx/frames`; third boot, all previous goldens byte-stable). The
+bridge plays it on the `PSTATE_TUMBLE` edge through the same walker-gate
+pose window as set/kick (`ARENA_HIT_ANIM` / `ARENA_HIT_POSE_FRAMES`
+override; `[anim]` burst bound 20→28 so full-clip gates can count it).
+
+**Gate:** oracle-gate check 9 — the mode-12 probe now STANDS through its
+first air-set bomb's fuse-out (the previous choreography walked away 38
+ticks before the blast, so no probe had ever exercised the sim's tumble
+in-arena) and the stun must show the golden hit clip at full length.
+`[simpos]` carries `hp0/tm0` for future damage forensics.
