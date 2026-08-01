@@ -878,6 +878,17 @@ and record which mask is the set button. If the set bomb's fuse expires before
 `kickrun` contact, shorten the walkoff/kickrun windows (keep the phase-name
 strings) and record the change.
 
+**As built (fork `e6860d3`):** the block above's stick signs were INVERTED
+(−1.0f drives +Z, toward the set bomb — the planned walkoff kicked it early);
+signs swapped and windows pulled to walkoff 1320–1360 / kickrun 1360–1420,
+because the set bomb's fuse measured **106 frames** (set n=632, blast n=738).
+Set mask confirmed **0x0010 (CONT_R)** first try. Kick anim observed `idx=33
+state=20`, and the clip begins slightly BEFORE contact — Task 4's
+two-baseline (idle + walk) filter is load-bearing. Kick timing has ~20 frames
+of slack on one verified trial: if kick extraction proves flaky, widen
+`kickrun`'s UPPER bound (the fuse allows to roughly +16 frames); never move
+its start. Air-set verified (bomb spawns at Y≈185 while airborne).
+
 ### A2 — Task 4 (extraction) changes
 
 - Read the WHOLE log after the run (truncation finding above).
