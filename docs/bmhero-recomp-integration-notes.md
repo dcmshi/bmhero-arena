@@ -1898,6 +1898,31 @@ checks and exit 1 — the soak launches inherit the calling shell's env, which i
 exactly what makes the probe work — and clearing it returns ALL GREEN. Rerun
 that pair whenever the gate changes.
 
+### Two caveats to know before debugging a red gate
+
+**Checks 1–3 all ride ONE mode-4 boot, and mode 4's timing has form.** If the
+injected standing set does not register, three checks go red at once and the
+output reads "the poses are wrong" when the truth is "the probe missed". Mode 4
+has done exactly that before: its standing set spent a stretch landing inside
+the sim's 180-tick countdown and being dropped, and the old gate stayed green
+only because the later MOVING pulses happened to satisfy it (§8.22 on poll-vs-
+tick timing; the 2026-07-31 probe-bug postmortem in the handoff). So when the
+gate goes red with no pose-related change to explain it, suspect probe timing
+FIRST: read `[setdbg]`/`[earlybtn]` in the mode-4 log and confirm a set actually
+registered after the countdown, before touching a pose index or a golden.
+
+**"set-pose plays once, full clip" is independent only by coincidence right
+now.** The golden `set_anim_frames` is 10 and `ARENA_POSE_FRAMES`'s default is
+also 10, so the check currently compares two numbers that agree for reasons that
+are related but not identical — one is the game clip's measured length, the
+other is how long the arena holds a pose. It is a real check today (it would
+catch §8.25's 24-frame looping window), but what will actually exercise it is a
+future golden whose clip is a different length. And if anyone changes the
+`ARENA_POSE_FRAMES` default, the check's meaning changes with it: it stops
+asserting "the arena's window matches the game's clip" and starts asserting
+"the new default happens to match" — re-derive it deliberately rather than
+letting it drift.
+
 ### What the oracle does NOT cover
 
 `no_oracle` in the goldens: **camera framing, explosion look, and fun**. Those
