@@ -2289,3 +2289,170 @@ and the round-9 airset jump-handback is generalized (`g_air_pose_open` /
 **Gate check 16**: the midair release plays the golden air toss (first
 contiguous run of 21, length vs golden). The mode-13 script gained the
 carry-jump beat between the grounded release and the stand-on-bomb set.
+
+## 8.35 Oracle 2.0 (2026-08-02): verb tables, and the whole-timeline differ
+
+Checks 1–16 are sixteen bespoke assertions, each aimed at one thing a feel
+round already caught. That is a colander: every clip nobody has complained
+about yet is ungated. **Check 17** compares the arena's ENTIRE animation
+timeline against vanilla's, verb by verb, and is the first assertion here
+whose coverage does not depend on somebody having noticed the bug first.
+Fork commits `78f7c33` → `1028bbf` + the gate commit; no sim change (v18,
+hash `04e8af49`), no C++ behaviour change beyond two new log channels.
+
+### (a) The verb tables — one script, two boots, one conversion site
+
+`src/main/verb_script.h` holds `VerbRow {name, start, dur, buttons, stick_y}`
+for both scripted boots: `kOracleScript` (23 rows, the ARENA_ORACLE vanilla
+boot) and `kBattleScript` (12 rows, the mode-13 arena boot). Everything is in
+**ticks**. The controller is polled **twice per sim tick**, and that ×2 now
+exists in exactly one place — `verb_apply()` — instead of being hand-applied
+in each of 35 window literals, which is how the old `main.cpp` carried it.
+Verifying the port was the point: all 23 vanilla rows equalled the old
+`poll/2` exactly, and the boot then fired all 23 `[oracle] phase=` markers at
+exactly the tabled tick.
+
+Each row emits a marker as it opens — `[oracle] phase=<name>` on the vanilla
+side, `[verb] <name> t<tick>` (`arena_verb_mark`) on the battle side — so a
+verb NAME is the join key between the two boots. Verbs the two scripts share
+are written **prefix-shaped**: the battle window does the same thing in the
+same order as the vanilla window, and may be longer. The differ truncates to
+the shorter of the two, so a longer battle window costs nothing; a window
+whose CONTENT changes shape cannot be rescued that way, and its verb needs a
+battle-only name instead (see the register below). Battle-only names carry
+the design divergences deliberately — mode 13's fuse is 150 ticks against
+vanilla's 106, so any verb whose timing depends on the fuse must not share a
+name.
+
+The second new channel is `[animrun] idx=R len=L t<tick>`, logged from
+`arena_dbg_anim` when the walker's clip index CHANGES: run `R` covers ticks
+`[t-L, t)`. The pre-existing `[anim]` burst caps at 28 lines and could never
+have carried this — the mode-13 boot logs an `idx=0 len=111` run.
+
+### (b) The differ, and the five guard rails it needed
+
+`tools\anim-diff.ps1` rebuilds the arena's per-tick clip stream from
+`[animrun]`, slices it at the `[verb]` markers, RLE-encodes each window, and
+compares it to `tools\oracle\timelines.json` (the same treatment applied to
+the vanilla boot, emitted by `oracle.ps1`). Match = same run count, same clip
+indices in order, lengths within **±3 frames**. Exit code = number of failing
+verbs. Compared set = the intersection of the two scripts' verb names: **10
+verbs, 22 runs** today.
+
+The vanilla side needs no tolerance at all — three independent vanilla boots
+reproduced every run index and every run length bit-for-bit. The ±3 is spent
+entirely on the arena side.
+
+Every guard below exists because the naive version produced a **vacuous
+green** or a **silent skip**, and each was demonstrated on a synthetic
+fixture before and after:
+
+- **Boundary-carryover drop, per-side caps 3 (vanilla) / 5 (arena).** The
+  clip already playing when a marker fires bleeds past it — 2 frames on the
+  vanilla side (the game's input→anim latency), 1 tick on the arena side (the
+  bridge drives the pose directly). The ≥2-frame jitter filter kept vanilla's
+  residue and dropped the arena's, turning a **1-frame phase difference into
+  a structural run-count mismatch on four verbs**. Each side now drops its
+  leading run only when it matches the clip that side was playing *before*
+  the marker (vanilla: the previous window's last run; arena:
+  `$stream[$t0-1]`), and only when that run is within its own side's measured
+  maximum residue. The caps are per-side and have no headroom: an unbounded
+  version deletes real content the moment a verb's own clip equals the
+  previous one's — a `kickrun` marker would silently delete vanilla's
+  `[3,16]`, sixteen frames of run-up, and PASS (measured). Over-cap residue
+  is kept and NAMED, so the failure never reads like a tolerance to bump. If
+  either side's carried clip is unknown, neither side drops — a one-sided
+  drop is the exact asymmetry the rule removes.
+- **Stream-hole guard.** The window budget came from the observed runs, so a
+  probe that died 20 ticks into a 100-tick verb "passed" over those 20.
+  `ObservedTicks` now fails a window that is not fully present in the stream
+  (fixture: `PASS 1 runs over 20f` → `FAIL arena stream incomplete - 20 of
+  100 ticks observed`).
+- **Collapsed-window guard.** A window that truncated to nothing printed
+  `PASS 0 runs over 1f` — the archetypal vacuous green. An empty kept list on
+  either side is now a loud failure. It is deliberately split from "short":
+  a 3-frame window with a real run on both sides still compares.
+- **`-Verbs` validation.** A gate's verb list is a contract, so a trailing
+  space (`'carrywalk,carryB '`) or an unknown name silently comparing fewer
+  verbs than asked is the same silent skip. Tokens are trimmed; an unknown
+  name is a hard usage error listing the known verbs. A KNOWN verb with no
+  `[verb]` marker in the log stays a comparison **FAIL** (dead probe), not a
+  usage error — the two paths are distinct.
+- **Last-verb bound.** The producer never flushes the run still open at
+  process exit, so the stream ends before the log does. The final window is
+  clamped to the last observed tick; without it `jumpon` was measured against
+  19 vanilla frames that were never observed here.
+
+### (c) The known-divergences register, and why it is read both ways
+
+`tools\oracle\known-divergences.json` maps verb → one line of reason. Check
+17 runs the differ unrestricted on the mode-13 log (mode 13 is the LAST boot
+the gate takes, so `arena_bridge.log` still holds it) and requires:
+
+1. every FAILing verb is in the register — each printed as
+   `KNOWN-DIVERGENT <verb>: <reason>`; an unregistered FAIL fails the gate,
+   naming the verb;
+2. **no registered verb PASSes.** A registered verb that starts passing is a
+   **stale exception**, and the check fails asking the maintainer to REMOVE
+   the entry. Without this direction the register rots into a permanent mute
+   — a verb silently un-gated forever, which is the same vacuous green the
+   guard rails above exist to prevent, just spelled in JSON;
+3. a registered verb that was never compared at all fails too (its marker
+   stopped firing);
+4. at least one verb passed, and the differ's exit code equals the number of
+   registered-and-failing verbs exactly — a cross-check that the gate's
+   parse of the differ's output did not miss a line.
+
+### (d) What the instrument caught on its first run
+
+Four of the ten shared verbs fail today, and the register carries all four.
+One is non-comparable by construction: **`windupwalk`**, whose battle window
+is 42 ticks of which only the first 20 walk (Task 1 had to re-choreograph the
+battle script so every grounded release comes from a standstill — see the
+comment block in `verb_script.h`), and which separately skips vanilla's
+4-frame transition clip 27 between 26 and 28. The other three are genuine
+arena divergences the sixteen bespoke checks could not see, and they are the
+instrument's first catches:
+
+1. **`setR2` — the arena stands on clip 41 where vanilla idles on 0.** The
+   set itself is exact (`[31,10]` on both sides). Clip 41 is the arena
+   walker's stand in some places and 0 in others; vanilla only ever stands
+   on 0.
+2. **`jumpon` — the jump ascent is far too short.** vanilla `[6,19] [7,15]`
+   vs arena `[6,3] [7,1]`: the arena reaches the landing clip 8 in ~4 ticks
+   where vanilla takes 34. The landing `[8,6]` and the hit reaction
+   `[43,24]`/`[43,25]` both match, so the sequence is right and the ascent
+   HOLD is wrong.
+3. **`relairB` — the post-toss sequence is missing.** The air toss matches
+   exactly (`[21,3]`), then vanilla plays `[30,10]` then `[8,6]` while the
+   arena goes straight to the jump clip. Clip **30 is information the scalar
+   goldens never held** — they record only `air_throw_anim_idx 21` /
+   `frames 3`. This is precisely the class of bug a whole-timeline compare
+   exists for.
+
+All three are backlogged for the next feel round; none is fixed in this
+slice, and the register says so on the line that mutes each one.
+
+### (e) The falsifiability proof, and the fixture lesson
+
+Check 17 was proven able to fail on the real gate, not in a fixture:
+`$env:ARENA_CARRY_WALK_ANIM = '26'` (the carry-walk clip knob; golden 17)
+before the gate run — the soak launches inherit the shell's env — turns
+`carrywalk` into an **unregistered** anim-diff FAIL and takes check 17 red
+along with the bespoke checks 11 and 15 that also watch that clip. Clearing
+the knob returns 17/17.
+
+**The lesson worth keeping is about the differ itself.** Every guard in (b)
+was found by attacking the tool with synthetic timelines and synthetic logs —
+a one-frame timeline to force a collapsed window, a truncated stream, a
+`kickrun` window whose run-up should never be dropped, a first-property verb
+where only one side has a predecessor — and each was measured BEFORE and
+AFTER the fix, on the old commit and the new. Two claims made during the
+slice were stated with the confidence of measurements and turned out to be
+predictions: that `carryrel` would still fail (it passes, correctly, and the
+trace says why), and that a `Truncate` edit had repaired a trailing-edge
+defect (an 8,575-case sweep found the old and new code behaviourally
+identical — it is a clarity refactor and nothing more). Both were corrected
+in writing in the task record rather than quietly dropped. A gate is only
+worth its coverage if the instrument behind it has itself been attacked; an
+instrument nobody tried to break is an assumption with a PASS line.
