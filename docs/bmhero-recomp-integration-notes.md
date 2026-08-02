@@ -2219,3 +2219,41 @@ identity+length (mode 12), carry-walk clip playing with frames advancing,
 `[chargehide]` on the golden windup, and a plateau-based "no invisible box"
 assertion (legal plateaus: floor, plus the golden stand lift only if vanilla
 supported it — it doesn't).
+
+## 8.33 Feel round 10 (2026-08-01): the charge-run clip, and the eaten throw
+
+Two follow-ups off the round-9 boot ("we're really close"); still zero sim
+changes (hash `04e8af49` holds).
+
+**(a) Charged movement froze the feet.** The round-9 carry driver played the
+windmill (26 — static legs) unconditionally once `timer >= 62`. Vanilla's
+answer, from the new `windupwalk` oracle segment (keep holding through the
+windmill, then walk): **there IS a distinct charge-run clip — 28** (state
+21), with real XZ displacement (`windup_walk_anim_idx 28`,
+`windup_walk_moves true`, reproduced across two boots). Driver branch:
+charged AND moving → 28; charged idle → 26. Knob `ARENA_WINDUP_WALK_ANIM`.
+
+**(b) "Sometimes the throw animation doesn't play."** The walker's own throw
+anim trigger is a ONE-SHOT that can land on the carry pose window's closing
+frame and get dropped by the `func_8001C0EC` gate — after which nothing
+re-asserts (the §8.32 airset lesson: the walker only re-triggers on its own
+state transitions) and the HOLD clip stayed up while the bomb arced. The
+bridge now drives the golden throw clip (29 × 10f) on the HELD→AIRBORNE
+edge — idempotent with the walker's write when that one survives, and the
+vanilla spread release measures as the same clip 29, so one latch covers
+single and charged throws. Knobs `ARENA_THROW_ANIM` /
+`ARENA_THROW_POSE_FRAMES`.
+
+**Choreography trap (cost one boot): the spread fan exhausts the bomb pool.**
+The spread release throws 4 bombs = the game's ENTIRE pool (`gObjects[2..5]`),
+they land AROUND the release point, and they sit on ~106f fuses. A set
+attempted before the pool clears spawns NOTHING — `Get_InactiveObject`
+returns no slot and the game does not complain. The first round-10 run's
+stand-on-bomb segment measured a jump over empty floor (its `bomb_stand_*`
+fields "reproduced" VACUOUSLY — a reminder that a green re-measurement is
+only as good as the scene it measured; the `[oracle-bomb]` channel going
+silent was the tell). The script now walks clear and waits out the fuses.
+
+**Gate checks 14–15** (same mode-13 boot): the release plays the golden
+throw clip (first contiguous run, like the airset check), and charged
+movement shows the charge-run clip with the windmill absent from `[carryw]`.
