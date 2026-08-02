@@ -80,7 +80,12 @@ against the vanilla game's own numbers in `tools\oracle\goldens.json` — set/ki
 pose index and length, bomb rest lift, throw impact detonation (§8.26). Rerun
 `tools\oracle.ps1` (a scripted vanilla boot) when a new behaviour needs a
 golden. **When a golden and an arena default disagree, the golden wins**, in the
-same commit that turns the gate green.
+same commit that turns the gate green. Check 17 additionally diffs the WHOLE
+per-verb anim timeline against `tools\oracle\timelines.json` (§8.35), so a wrong
+clip nobody has complained about still goes red. The third disposition, beside
+"fix the arena" and "the golden wins", is `tools\oracle\known-divergences.json`:
+a mute must cite its reason, and the gate goes **red when a registered verb
+starts passing** — stale mutes get removed, not kept.
 
 - `tools/gate.ps1` — all four suites + hash + metrics with CI's exact flags. Run
   it before claiming anything is green.

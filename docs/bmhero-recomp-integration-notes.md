@@ -2340,7 +2340,9 @@ compares it to `tools\oracle\timelines.json` (the same treatment applied to
 the vanilla boot, emitted by `oracle.ps1`). Match = same run count, same clip
 indices in order, lengths within **±3 frames**. Exit code = number of failing
 verbs. Compared set = the intersection of the two scripts' verb names: **10
-verbs, 22 runs** today.
+verbs, 22 runs** today — of which **8 runs are live assertions and 14 sit
+inside the four registered mutes** (see (c)). Clearing a mute is therefore
+worth more coverage than the verb count suggests.
 
 The vanilla side appears to need no tolerance at all — three vanilla samples
 (two fresh boots plus the saved capture the timelines were generated from)
@@ -2462,3 +2464,26 @@ identical — it is a clarity refactor and nothing more). Both were corrected
 in writing in the task record rather than quietly dropped. A gate is only
 worth its coverage if the instrument behind it has itself been attacked; an
 instrument nobody tried to break is an assumption with a PASS line.
+
+### (f) Adding a shared verb — the procedure
+
+1. Add the row to **both** tables in `src/main/verb_script.h`. Keep the
+   battle window **prefix-shaped** — same buttons and stick from the verb's
+   start, longer is fine. If its content changes shape, or its timing depends
+   on the mode-13 fuse (150 vs vanilla's 106), give it a **battle-only name**
+   instead; a name shared by two differently-shaped windows cannot pass and
+   will only earn a register entry.
+2. **Rebuild** — the tables are compiled in, and a scripted boot run against
+   a stale exe measures the old choreography.
+3. Re-run `tools\oracle.ps1 -Force` to re-extract `timelines.json`. `-Force`
+   is required and expected: a new vanilla marker **splits the neighbouring
+   window**, so the verb before it legitimately loses the frames that now
+   belong to the new one. The compare reporting that neighbour as changed is
+   correct, not a regression — but read the diff, because a neighbour that
+   changed by anything OTHER than the split is a real one.
+4. Raise `$AD_MIN_VERBS` in `tools\oracle-gate.ps1` to the new intersection
+   size. It is `>=`, so a stale floor never goes falsely red — it silently
+   stops asserting that the new verb is still being compared.
+5. Run the gate. A new verb that fails is either an arena bug to fix or a
+   register entry **with a reason** — never left unregistered, and never
+   muted without the reason line.
