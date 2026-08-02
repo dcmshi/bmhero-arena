@@ -13,7 +13,7 @@ useful commands, and the one-time setup already done.
 
 | doc | what it's for |
 |---|---|
-| `docs/HANDOFF-2026-07-30.md` | **current open items, traps, commands** — read on resume |
+| `docs/HANDOFF-2026-08-02.md` | **current open items, traps, commands** — read on resume |
 | `docs/bmhero-recomp-integration-notes.md` | living RE reference for the fork-side render bridge (patches/exports, per-frame hooks, object & player structs, input, camera, coord mapping). Read before any A1.2+ work. **§8.x is the authority when anything else disagrees.** |
 | `docs/bmhero-battle-arena-design.md` | the mode being built: ruleset, ArenaState spec, tick pipeline, GekkoNet plan, render bridge, host-session model |
 | `docs/bmhero-multiplayer-architecture.md` | overall design: two sim domains, determinism model, netcode topology, milestones |
@@ -23,26 +23,27 @@ useful commands, and the one-time setup already done.
 | `docs/PROJECT-LOG.md` | milestone history (what was done when, and why). Archive — not current state |
 | `README.md` | this repo's layout, build, and the five invariants |
 
-## Where things stand (verified 2026-07-30)
+## Where things stand (verified 2026-08-02)
 
-**Sim:** `TUNE_VERSION` **15**, pinned hash **`cce00b99`** (v15: thrown bombs
-impact-detonate). Canonical `main` and fork `master` both built, soaked and
-gate-green — **local, unpushed** pending the current feel round. Per-slice
-feature branches are retired — **work from `master`** on the fork.
+**Sim:** `TUNE_VERSION` **18**, pinned hash **`04e8af49`** (v18: kick outruns
+the kicker; no jump while charging). Canonical `main` and fork `master` both
+**pushed**, gate-green, SOAK GREEN. Per-slice feature branches are retired —
+**work from `master`** on the fork.
 
 **Done:** A0 (headless deterministic sim), A2 (GekkoNet SyncSession), the SDL
-debug viewer, the tuning-loop toolkit, and A1.0 → **A1.5** — the sim drives four
-on-screen actors in a fixed-camera arena with bombs, set/kick poses, hazards
-suppressed and Hero's own HUD showing our numbers.
+debug viewer, the tuning-loop toolkit, A1.0 → **A1.5**, feel rounds 4–11
+(user-verified 2026-08-01), and **oracle 2.0**: choreography lives in tick-unit
+verb tables and gate check 17 diffs the arena's whole per-verb anim timeline
+against vanilla's (§8.32–§8.35). The bridge drives the carry/throw/midair
+clips from vanilla goldens; player 0's Pos.y is sim-owned always.
 
-**A1 remaining, all polish:** ~~action poses STATIC~~ ~~no explosion visual~~ —
-poses ANIMATE and detonations draw a growing blast ball as of 2026-07-30 (fork
-`b379c94`, §8.23/§8.24); puppets 1–3 are still bomb-mesh placeholders; the
-arena is the Nitros render stand-in, not a purpose-built battle map. Nothing
-since v11 has been feel-verified — but as of 2026-08-01 the **objective** half
-of a feel boot is gated automatically against the vanilla game (the single-
-player oracle, §8.26), so the remaining round is a human sign-off on camera
-framing, explosion look and fun. Details and priority order: the handoff.
+**A1 remaining:** the three divergences the timeline differ caught on its
+first run (tasks #29–31: post-set idle clip, jump-ascent timing, post-toss
+recovery sequence); puppets 1–3 are still bomb-mesh placeholders; the arena is
+the Nitros render stand-in, not a purpose-built battle map. One pending
+DESIGN call: vanilla gives no standing-on-bombs support (measured) — bomb-
+height standing would be sim v19 by choice, not parity. Details and priority
+order: the handoff.
 
 **Then A3** — online hardening (ROM-free): rendezvous server + lobby codes,
 host-relay fallback, 4P mesh WAN soak, desync surfacing, player-slot assignment.

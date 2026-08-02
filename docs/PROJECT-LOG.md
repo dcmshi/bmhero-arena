@@ -12,6 +12,34 @@ entry disagrees with `docs/bmhero-recomp-integration-notes.md`, the notes win.
 
 ---
 
+## Feel rounds 9–11 + oracle 2.0 (2026-08-01 → 2026-08-02)
+
+> Superseded-by-nothing as of writing; current state lives in `CLAUDE.md` +
+> `docs/HANDOFF-2026-08-02.md`. RE detail: §8.32–§8.35.
+
+Three user feel rounds, ten reported bugs, ten fixes — **zero sim changes**
+(v18 `04e8af49` pinned throughout; everything was render/bridge parity). The
+big finds: the walker's own CARRY is structurally broken in battle (its pool
+bomb dies to the per-frame sweep — the bridge now drives carry/windup/
+charge-run/carry-jump/throw/air-toss clips from vanilla goldens); the walker
+only re-asserts anims on its own state transitions (three separate bugs);
+player 0's Pos.y is sim-owned ALWAYS (the walker's ground scan stood on
+door-class bomb actors at floor+210 — and `damageState` blinds the push scan
+but not the ground scan); vanilla gives NO standing-on-bombs support
+(measured — the user's contrary expectation is a pending design call).
+
+Then **oracle 2.0** (spec + plan + 3-task subagent execution, adversarial
+reviews with synthetic fixtures): choreography for both scripted boots moved
+into tick-unit verb tables (`verb_script.h`, one ×2 poll conversion site —
+the 2:1 clock had cost three separate bugs), and gate check 17 now diffs the
+arena's ENTIRE per-verb anim timeline against vanilla's
+(`tools\anim-diff.ps1`, `timelines.json`), with a known-divergences register
+that goes red when a mute goes stale. Falsifiability proven on the real gate.
+The differ caught **three real bugs on its first run** (post-set idle clip
+41-vs-0, jump-ascent clip timing, missing post-toss recovery [30,10]+[8,6])
+— exactly the "less things to manually check off for qa" the user asked for.
+oracle-gate: 4 checks → 17. Both repos pushed at `ebbb041` / `4e8ad23`.
+
 ## Current status (2026-07-27)
 
 > **RESUMING? READ `docs/HANDOFF-2026-07-27.md` FIRST.** It lists the open items
