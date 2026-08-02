@@ -2257,3 +2257,35 @@ silent was the tell). The script now walks clear and waits out the fuses.
 **Gate checks 14–15** (same mode-13 boot): the release plays the golden
 throw clip (first contiguous run, like the airset check), and charged
 movement shows the charge-run clip with the windmill absent from `[carryw]`.
+
+## 8.34 Feel round 11 (2026-08-01): the midair verbs, measured
+
+Two reports off the round-10 boot; still zero sim changes (`04e8af49`).
+
+**(a) The hand bomb rode the charge-run.** The round-9 charge-hide keyed on
+the windmill CLIP (26); round 10 introduced the charge-run clip (28) for
+charged movement, and nobody told the hide — so running while winding up
+showed the bomb in the hands (standing was fine: that path is 26). The hide
+now keys on the golden TIMER (`windup_start_frames`, 62) — the same
+threshold the carry driver uses to switch into the charged clips, so the
+hide tracks whichever charged clip is up. The general lesson: **a
+clip-keyed rule breaks silently when a new clip joins the family; key
+family-wide rules on the STATE that selects the family.**
+
+**(b) The midair release verb.** Round 10's throw-pose latch fired the
+grounded 10-frame lean-and-swing (29) on EVERY release — including midair
+jump-throws, where it read as an upward shove ("it looks like it's pushing
+bomberman up"). New `carryjump/jumpB/relairB` oracle segments (release ~6f
+into the DESCENT, so a real kick would show against a falling baseline)
+measured: vanilla **jumps while carrying** (`carry_jump_allowed true`) on
+its **own clip 20** (we'd been playing the grounded carry idle through the
+arc), the midair release is a **quick 3-frame toss (21)** — and
+`air_throw_y_rise 0.0`: **no vertical impulse exists**, in vanilla or in
+the sim. The "push" was entirely the wrong clip. Fixes: the carry driver's
+airborne branch plays 20; the release latch picks 21×3f when `pos.y > 0`;
+and the round-9 airset jump-handback is generalized (`g_air_pose_open` /
+`g_air_pose_idx`) to hand ANY expiring midair pose back to the jump clip.
+
+**Gate check 16**: the midair release plays the golden air toss (first
+contiguous run of 21, length vs golden). The mode-13 script gained the
+carry-jump beat between the grounded release and the stand-on-bomb set.
