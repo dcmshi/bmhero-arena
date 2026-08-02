@@ -2309,8 +2309,11 @@ boot) and `kBattleScript` (12 rows, the mode-13 arena boot). Everything is in
 exists in exactly one place — `verb_apply()` — instead of being hand-applied
 in each of 35 window literals, which is how the old `main.cpp` carried it.
 Verifying the port was the point: all 23 vanilla rows equalled the old
-`poll/2` exactly, and the boot then fired all 23 `[oracle] phase=` markers at
-exactly the tabled tick.
+`poll/2` exactly, and the boot then fired every marker at exactly the tabled
+tick. Row 17 (the walk clear of the spread fan) is deliberately **NULL** —
+it drives the stick without naming a verb — so the 23 rows emit **22** named
+`[oracle] phase=` markers; the 23rd logged marker, `in-level`, is the
+preamble, emitted from OUTSIDE the table.
 
 Each row emits a marker as it opens — `[oracle] phase=<name>` on the vanilla
 side, `[verb] <name> t<tick>` (`arena_verb_mark`) on the battle side — so a
@@ -2339,9 +2342,12 @@ indices in order, lengths within **±3 frames**. Exit code = number of failing
 verbs. Compared set = the intersection of the two scripts' verb names: **10
 verbs, 22 runs** today.
 
-The vanilla side needs no tolerance at all — three independent vanilla boots
-reproduced every run index and every run length bit-for-bit. The ±3 is spent
-entirely on the arena side.
+The vanilla side appears to need no tolerance at all — three vanilla samples
+(two fresh boots plus the saved capture the timelines were generated from)
+reproduced every run index and every run length bit-for-bit, so the ±3 is
+spent entirely on the arena side. **One machine, one build, three samples: a
+strong signal, not a proof** — if a vanilla-side length ever drifts, that is
+the assumption to re-measure first.
 
 Every guard below exists because the naive version produced a **vacuous
 green** or a **silent skip**, and each was demonstrated on a synthetic
