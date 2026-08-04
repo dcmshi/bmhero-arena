@@ -2487,3 +2487,62 @@ instrument nobody tried to break is an assumption with a PASS line.
 5. Run the gate. A new verb that fails is either an arena bug to fix or a
    register entry **with a reason** — never left unregistered, and never
    muted without the reason line.
+
+## 8.36 Task #29 (2026-08-04): clip 41 was the PUSH anim, and the spammer was the scan
+
+The timeline differ's first catch (`setR2`: arena idles on 41 where vanilla
+idles on 0) is fixed and the register entry removed — the verb is a live
+assertion now. Zero sim changes (v18, hash `04e8af49`). Two mechanisms, both
+of which the handoff had half-right:
+
+**(a) Clip 41 is the push animation, not a "broken-carry pickup".** The
+41-writer was found by grepping the recompiled machine-C for
+`a2 = 0x29` + `jal 0x8001C0EC`: exactly one player-body site,
+`func_802843CC_code_extra_0` (funcs_51.c:6391) — actionState := **42
+(PUSH)**, trigger clip 41, call the anim-config helper `func_80280000`. It
+is what the player overlay's un-decompiled solid-object scan runs on
+bomb-actor overlap, EVERY frame the overlap holds. This corrects §8.32's
+attribution ("the carry state machine re-triggers the pickup clip"): the
+spam correlates with standing NEAR a bomb actor, not with carrying — the
+`[animw]` evidence shows 41 pinned at frame=2 for 15f after a set (a bomb
+30u in front), after a toss landing (bomb beside the landing spot), with B
+up throughout, and idle-0 surviving exactly ONE frame after a landing before
+the next overlap-frame stole it. The 42-containment (§8.27) restores the
+STATE the same frame, but an anim trigger cannot be un-rung — the clip
+counter was already reset — so the body idles on 41 whenever no pose window
+is open.
+
+**Fix 1: the push ENTRY is suppressed in battle** (`RECOMP_PATCH
+func_802843CC_code_extra_0`, arena_render.c): early-return when
+`arena_bridge_is_battle()`, byte-equivalent re-implementation of the
+original otherwise. Keyed on the mechanism, not the clip number (§8.34
+lesson). In battle ALL collision response is the sim's, so the walker's push
+reaction is never wanted — this also retired 41-idles that predate any set
+(the whole boot now stands on 0: `[animrun] idx=0 len=111/14/18/115`).
+`ARENA_PUSH_ENTRY=1` restores the vanilla entry in battle — the one-binary
+A/B (§8.18 rule) that both re-reddened setR2 and proved the re-implemented
+vanilla body (overlay call included) runs a full boot clean. The
+42-containment stays as the second layer. The overlay SCAN itself is still
+un-decompiled — that RE item stays open, but this gates its only
+player-visible effect.
+
+**(b) With the spam gone, the set clip LOOPED — the handoff's original
+hypothesis, now visible.** Clip 31 wraps 18→0 (measured 25 straight frames
+post-fix (a)): R is stripped, the walker never sees a set, so no walker
+transition ends the pose — the 41-spam had been "closing" it by theft. This
+is why `carryrel` never needed help: B passes through, the release IS a
+walker transition, and the walker re-asserts idle itself. **The rule: verbs
+the walker sees (A, B) end themselves; verbs only the sim sees (R) need a
+bridge handback.**
+
+**Fix 2: a SET tail** (arena_bridge.cpp), the grounded twin of the round-9
+airset tail: when the set window expires still holding the set clip,
+grounded and standing, hand back to idle (`arena_idle_anim_index()`, golden
+0 per every vanilla timeline, knob `ARENA_IDLE_ANIM`) with the same 2-frame
+single trigger. A window that closes with the player already moving is an
+unmeasured corner deliberately left alone (comment in the tail).
+
+**Result:** `setR2 PASS 2 runs over 18f` (`[31,10],[0,8]` both sides); differ
+exit 3 = exactly the three remaining registered divergences; live coverage
+10 of 22 runs (was 8). The A/B: `ARENA_PUSH_ENTRY=1` → setR2 FAIL (differ
+exit 4), knob clear → PASS.

@@ -37,13 +37,13 @@ verb tables and gate check 17 diffs the arena's whole per-verb anim timeline
 against vanilla's (§8.32–§8.35). The bridge drives the carry/throw/midair
 clips from vanilla goldens; player 0's Pos.y is sim-owned always.
 
-**A1 remaining:** the three divergences the timeline differ caught on its
-first run (tasks #29–31: post-set idle clip, jump-ascent timing, post-toss
-recovery sequence); puppets 1–3 are still bomb-mesh placeholders; the arena is
-the Nitros render stand-in, not a purpose-built battle map. One pending
-DESIGN call: vanilla gives no standing-on-bombs support (measured) — bomb-
-height standing would be sim v19 by choice, not parity. Details and priority
-order: the handoff.
+**A1 remaining:** two divergences from the timeline differ's first run
+(tasks #30–31: jump-ascent timing, post-toss recovery sequence — #29 post-set
+idle fixed 2026-08-04, §8.36: push-entry suppression + set-tail handback);
+puppets 1–3 are still bomb-mesh placeholders; the arena is the Nitros render
+stand-in, not a purpose-built battle map. The standing-on-bombs DESIGN call is
+RESOLVED (user-verified in single player 2026-08-04): no height — vanilla
+parity is the design. Details and priority order: the handoff.
 
 **Then A3** — online hardening (ROM-free): rendezvous server + lobby codes,
 host-relay fallback, 4P mesh WAN soak, desync surfacing, player-slot assignment.
