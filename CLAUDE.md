@@ -37,12 +37,14 @@ verb tables and gate check 17 diffs the arena's whole per-verb anim timeline
 against vanilla's (§8.32–§8.35). The bridge drives the carry/throw/midair
 clips from vanilla goldens; player 0's Pos.y is sim-owned always.
 
-**A1 remaining:** two divergences from the timeline differ's first run
-(tasks #30–31: jump-ascent timing, post-toss recovery sequence — #29 post-set
-idle fixed 2026-08-04, §8.36: push-entry suppression + set-tail handback);
+**A1 remaining:** all three differ catches are FIXED (2026-08-04: #29 §8.36
+push-entry + set tail; #30 §8.37 jump driver + delivery-anchored markers;
+#31 §8.37 toss chain) and check 17 runs 9-of-10 verbs live (only
+`windupwalk` registered, non-comparable by construction; floors now derived
+— #32/#33). Left: #24 pushout (sim v19), #18 air-set fall-arc golden,
 puppets 1–3 are still bomb-mesh placeholders; the arena is the Nitros render
-stand-in, not a purpose-built battle map. The standing-on-bombs DESIGN call is
-RESOLVED (user-verified in single player 2026-08-04): no height — vanilla
+stand-in, not a purpose-built battle map. The standing-on-bombs DESIGN call
+is RESOLVED (user-verified in single player 2026-08-04): no height — vanilla
 parity is the design. Details and priority order: the handoff.
 
 **Then A3** — online hardening (ROM-free): rendezvous server + lobby codes,

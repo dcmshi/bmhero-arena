@@ -2546,3 +2546,68 @@ unmeasured corner deliberately left alone (comment in the tail).
 exit 3 = exactly the three remaining registered divergences; live coverage
 10 of 22 runs (was 8). The A/B: `ARENA_PUSH_ENTRY=1` → setR2 FAIL (differ
 exit 4), knob clear → PASS.
+
+## 8.37 Tasks #31 + #30 (2026-08-04): the toss chain, the jump driver, and markers that lie
+
+Both remaining genuine divergences from the differ's first run are fixed and
+their register entries removed; only `windupwalk` (non-comparable by
+construction) stays muted. Zero sim changes (v18, `04e8af49`).
+
+### (a) #31 relairB — the recovery is fixed-length clip choreography
+
+Vanilla's post-toss timeline `[21,3][30,10][8,6]` then idle is a fixed clip
+sequence, not touchdown-anchored (the one measured sample has the chain end
+coincide with touchdown; reproducing the clip lengths verbatim lets the
+idle tail absorb small arc differences, and the differ's ±3 plus window
+truncation tolerate the rest). The midair toss now enters a staged CHAIN
+(`g_toss_chain_stage`: 21×3 → 30×10 → 8×6 → idle when grounded / jump clip
+when airborne) instead of the plain jump handback; the expected-clip guard
+kills the chain if a longer edge pose steals the window. Clip 30 was never
+in the scalar goldens — **the timeline is the golden** (knobs
+`ARENA_AIRTOSS_RECOVER_*`, `ARENA_LAND_*`). `relairB PASS 4 runs over 37f`.
+
+### (b) #30 jumpon — three stacked causes, one of them the instrument
+
+1. **The clips rode the walker, and the walker is flaky.** The sim's jump
+   is tick-exact, but the visible clips came from the walker's own mini-hop
+   — a ~4-tick clip 6 in some boots, NOTHING in boots where the walker sat
+   in its thrown state (15) through the whole window. Fix: a **jump pose
+   driver** (the carry-driver architecture): while the sim is in
+   PSTATE_JUMP, not carrying, no toss chain, rolling 2-frame window — clip
+   6 while `vel.y > 0`, clip 7 after apex (vanilla `[6,19][7,15]`; arena
+   measures `[6,16][7,15]`, ascent Δ3 = at tolerance). On the jump-end edge,
+   grounded: the landing squat `[8,6]`, handed back to idle by the ground
+   tail (the #29 set tail, generalized to `g_ground_tail_idx`). Knobs
+   `ARENA_FALL_ANIM`, `ARENA_JUMP_DRIVER=0` (one-binary A/B off-switch).
+2. **The `[verb]` markers could lie by ~7 ticks.** Markers used to stamp
+   `g_state.tick` at the POLL (injection); the `[btn]` channel (new: the
+   sim-side mask logged on change with its consumption tick) showed most
+   boots deliver polls the same tick — but one boot in ~six delivers ~7
+   ticks late (`[verb] setR2 t519` vs `[setdbg] t527`), sliding every
+   window boundary against the anim stream and producing over-cap leading
+   residue. Markers are now **delivery-anchored**: the poll side enqueues
+   the name (`arena_verb_mark` → pending queue), `tick_input` flushes it
+   stamped with the consumption tick — the same clock and pipeline stage as
+   `[animrun]`. An in-session claim that "the sim never jumps at jumpon"
+   was a misreading of the pstand frame↔tick offset during this hunt and
+   was retracted in the #31 commit; the `[btn]` channel is what settled it.
+3. **The fuse divergence is design, so the window now ends before it.**
+   Battle's 150-tick fuse pushes the hit reaction ~44t past vanilla's 106 —
+   no clip work reconciles that run. A battle-only `postjump` marker (row
+   535) closes jumpon's compared window after the landing settles; the hit
+   clip stays covered by the bespoke check. `jumpon PASS 4 runs over 54f`.
+
+Differ after both: **9 of 10 verbs passing, 18 of 20 runs live** (windupwalk
+registered). Compared-run total moved 22 → 20 because postjump shortens
+jumpon's window.
+
+### (c) #32/#33 — the floors stop decaying
+
+Check 17's `$AD_MIN_VERBS` is now **derived at gate time** from the
+`verb_script.h` name intersection (#33; the hand-kept `10` was un-floored by
+construction for any verb added past it), and a **depth floor**
+`$AD_MIN_PASS_RUNS = 18` asserts the differ's printed passing-run subtotal
+(#32) so a shortened battle window cannot truncate a verb to a passing
+prefix while the verb count stands still. Both fail closed: a broken header
+parse derives 0 (explicitly failed), a missing subtotal line parses as −1 —
+so a green check 17 is itself evidence both floors evaluated.
