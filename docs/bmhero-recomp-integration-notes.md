@@ -2601,6 +2601,12 @@ Differ after both: **9 of 10 verbs passing, 18 of 20 runs live** (windupwalk
 registered). Compared-run total moved 22 → 20 because postjump shortens
 jumpon's window.
 
+**Feel round 12 (2026-08-04): user-verified** — "all items look good" on the
+`1893a19` build: post-set idle, idle-near-bombs, full-arc jump clips with
+landing squat, the midair-toss recovery sequence, and the regression sweep
+(carry/windup/charge-run, throws, kick, hit reaction, no bomb-height
+standing).
+
 ### (c) #32/#33 — the floors stop decaying
 
 Check 17's `$AD_MIN_VERBS` is now **derived at gate time** from the

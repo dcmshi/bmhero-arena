@@ -23,7 +23,7 @@ useful commands, and the one-time setup already done.
 | `docs/PROJECT-LOG.md` | milestone history (what was done when, and why). Archive — not current state |
 | `README.md` | this repo's layout, build, and the five invariants |
 
-## Where things stand (verified 2026-08-02)
+## Where things stand (verified 2026-08-04)
 
 **Sim:** `TUNE_VERSION` **18**, pinned hash **`04e8af49`** (v18: kick outruns
 the kicker; no jump while charging). Canonical `main` and fork `master` both
@@ -31,10 +31,13 @@ the kicker; no jump while charging). Canonical `main` and fork `master` both
 **work from `master`** on the fork.
 
 **Done:** A0 (headless deterministic sim), A2 (GekkoNet SyncSession), the SDL
-debug viewer, the tuning-loop toolkit, A1.0 → **A1.5**, feel rounds 4–11
-(user-verified 2026-08-01), and **oracle 2.0**: choreography lives in tick-unit
-verb tables and gate check 17 diffs the arena's whole per-verb anim timeline
-against vanilla's (§8.32–§8.35). The bridge drives the carry/throw/midair
+debug viewer, the tuning-loop toolkit, A1.0 → **A1.5**, feel rounds 4–12
+(round 12 user-verified 2026-08-04), and **oracle 2.0**: choreography lives in
+tick-unit verb tables and gate check 17 diffs the arena's whole per-verb anim
+timeline against vanilla's (§8.32–§8.37), with derived floors (#32/#33). All
+three of the differ's first-run catches are fixed (§8.36 push-entry + set
+tail; §8.37 jump driver + toss chain + delivery-anchored markers); 9 of 10
+verbs are live assertions. The bridge drives the carry/throw/midair/jump
 clips from vanilla goldens; player 0's Pos.y is sim-owned always.
 
 **A1 remaining:** all three differ catches are FIXED (2026-08-04: #29 §8.36
