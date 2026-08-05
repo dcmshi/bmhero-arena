@@ -2811,3 +2811,220 @@ is the natural follow-up; whether generic-pool instances self-advance their
 frames is still unmeasured (the still frame can't say); and all four
 bombers share the one resident skin, so P2–P4 visual identity (tint /
 marker) is an open design item.
+
+## 8.41 Puppet clips (2026-08-05): the engine already had the clock, and the bomber ignores the lights
+
+§8.40 left three things open. Two are now closed and one is a recorded
+negative. All of it is fork-side; the sim was not touched.
+
+### The frame clock: measured before anything was built on it
+
+§8.40 could not tell from a still frame whether an anim instance on a
+*generic-pool* slot advances its own frames, and the whole design forked on
+the answer (a frozen instance would have needed per-puppet
+`func_8001B6BC` frame writes every frame, the Mirror-Bomber way). So it was
+measured first, with a channel that reports the engine's own number rather
+than ours: `[pframe]` logs `func_8001B62C(slot, 0)` for puppet 1 over a
+bounded 10-frame burst (bounded because a wrap would break a monotonic
+`-Rising` gate — the burst must not outlive the clip).
+
+```
+[pframe] p1 idx=0 f=0  f=2  f=4  f=6  f=8  f=10  f=12  f=14  f=16  f=18
+```
+
+**Verdict: they self-advance, +2/frame** — which is exactly the rate
+player 0's own clip advances at (the A1.4 `[animw] idx=31 frame=(\d+)` gate
+reports the same `[0,2,…,18]`). The engine runs a puppet's anim on the same
+clock as the player's, so the manual frame pump was **deleted from the plan
+before a line of it was written**. The mechanism behind that: §8.36's
+`func_8002B154` patch skips only the borrowed *class behaviour* for actor
+slots; the anim/draw bookkeeping (`func_8001CEF4` / `CD20` / `AD6C`) still
+runs, and `func_8001CD20`→`func_8001CAAC` IS the frame advance.
+
+A second finding fell out of the same run for free: **no `idx=-3` anywhere**
+across all three puppets, i.e. the §8.40 self-describing model lookup is
+healthy on every one of them — a standing regression check on §8.40 that
+costs nothing to keep.
+
+### The chooser: a pure function, and the funnel does the rest
+
+Clips come from a **pure function of the puppet's sim state** —
+`arena_puppet_anim(i)` in `arena_bridge.cpp`, no edges, no windows, no
+history. Indices are the measured vanilla vocabulary
+(`tools/oracle/timelines.json`), not guesses:
+
+| sim state | free hands | carrying |
+|---|---|---|
+| `PSTATE_IDLE` | 0 | 14 |
+| `PSTATE_RUN` | 3 | 17 |
+| `PSTATE_JUMP` | 6 rising / 7 falling (`vel.y > 0`) | 20 |
+| `PSTATE_TUMBLE` | the same hit clip player 0 uses (`arena_hit_anim_index()`); **falls back to 0**, never to a sentinel, if that clip is disabled |
+| `PSTATE_DEAD` | −1 | −1 |
+
+Three sentinels, each with one meaning: **−1** = dead, the patch writes
+`ACTION_NONE` and the actor hides (the loop's unconditional `ACTION_IDLE`
+at the top of the next frame un-hides on respawn, so nothing has to
+remember). **−2** = leave the spawn bind alone — knob off, or the puppet is
+a bomb placeholder rather than bomber-bound, so its texanim is never
+touched. **−3** appears only in `[panim]`, never from the chooser: it is the
+patch's fail-open tag for "this slot has no anim instance".
+
+The patch then triggers **only on change**, through §8.40's own funnel:
+
+```c
+if (gObjects[slot].Unk140[0] >= 0) {
+    s32 want = arena_export_puppet_anim(i);
+    if (want == -1)                                        gObjects[slot].actionState = ACTION_NONE;
+    else if (want >= 0 && func_8001B880(slot, 0) != want)   func_8001C0EC(slot, 0, want, 1, (u32*)D_80115808);
+    ...
+}
+```
+
+`func_8001B880` is the engine's own "which clip is bound" getter, so the
+edge is read from the engine, not tracked by us — the walker-gate principle
+(§8.18) applied to a puppet. The result is one write per state edge, and
+the whole designed choreography for a 600-tick bot cycle is **seven lines**:
+
+```
+[panim] p1 idx=0 st=0 t155   spawn bind, idle
+[panim] p1 idx=3 st=1 t181   RUN
+[panim] p1 idx=6 st=2 t421   JUMP rising
+[panim] p1 idx=7 st=2 t437   vel.y flipped -> falling
+[panim] p1 idx=0 st=0 t452   landed
+```
+
+The §8.36 `func_8001C0EC` walker gate does not interfere: it drops writes
+only for `objId == 0 && part == 0`, and puppets are slots 14..77.
+
+### Driving a puppet at all needed a bot — and the plan's sign was wrong
+
+Players 1–3 receive hard neutral input every tick, so **a puppet never
+moves on its own** and no probe could see a clip transition. `ARENA_PUPPET_BOT=1`
+supplies a canned cycle for player 1 (idle `[0,180)`, run `[180,420)`, jump
+tap `[420,428)`, repeat), latched once from the environment like the file's
+other knobs.
+
+The plan specified `sy = +32` for "full forward". Measured, not inferred:
+`[pstate]` showed RUN opening at t181 and closing at **t200 — 19 ticks** —
+while the stick was still held. The sim's forward is **negative** sy (the
+bridge's own adapter negates it with a comment: yaw 0 means −Z and the sim
+moves along `(sin yaw, −cos yaw)`), so `+32` ran player 1 at the +Z wall
+2.07 units behind its spawn, which at `TUNE_RUN_ACCEL`→`TUNE_RUN_SPEED` is
+~19 ticks exactly. Flipped to `−32`: RUN sustains 240 ticks (t181→t421,
+where the jump legitimately takes over) and `[simpos]` shows p1 crossing
+~11 units of arena instead of 2. **The lesson is the older one restated:**
+a probe that walks an entity measures the bound you are testing (§"measure
+the geometry, not the player"), and a canned input's *sign* is part of the
+instrument — validate it before trusting a window length.
+
+The knob gate is falsifiable and was falsified: with
+`ARENA_PUPPET_ANIM=0` the `-Expect` on `idx=3` goes **RED**, and
+non-vacuously — `[pstate]` shows the bot running its full cycle four times
+over while `[panim]` stays pinned on the three spawn binds. Sim states
+change, clips do not; the knob is genuinely the thing under test.
+
+### The tint spike: the write lands, the bomber ignores it
+
+§8.40's third open item — P2–P4 identity, one resident skin — got a
+timeboxed spike (read first, two boots maximum). **Outcome: negative.**
+Recording it in full, because the mechanism half is correct and reusable and
+the next session should not re-derive it.
+
+Read first, and this is what the object system does *not* have: no RGBA
+anywhere in `ObjectStruct` (`obj.h:53`), none in the model-pool record
+(`UnkStruct80165290`, `types.h:309`), and no colour in any of the three
+per-frame calls every active object gets (`func_8001CEF4` integrates motion,
+`func_8001CD20`→`CAAC` advances the clip, `func_8001AD6C` advances the
+texanim). `OBJ_PUL_BLUE/RED/YELLOW/PURPLE/ORANGE/GREEN` (161..166) look like
+six recolours of one thing but are six classes with six assets.
+
+What the game *does* have is a **per-object light-colour override**.
+`func_800181F0()` (`17930.c:383`) emits
+`gMoveWd(G_MW_LIGHTCOL, aLIGHT_1/3, …)` from the `D_801775BC` /
+`D_801775C4..EC` globals — and it is called **once per drawn object**, out of
+`func_8001838C()`, which every generic-pool draw runs immediately before
+that object's model DL. `code/5D4D0.c:66` is the game's own use of exactly
+that path (`D_801775BC = 3` plus a red light/ambient pair for a level flash;
+dead in retail behind a top-of-function `return;`, but it fixes the intent).
+The hook that keys it per puppet is `func_8001B014` — the ONE per-object call
+in the draw sequence that is handed the object index, landing after the setup
+DL and before the model DL — with the words emitted from the patch so no
+global moves and file 1's model data (the bytes **all four** bombers draw
+from, player included) is never written.
+
+Two boots, and they disagree with each other in the useful way:
+
+1. **Light 1 + the ambient** — the two slots `func_800181F0` itself writes —
+   moved a lit bomber head by **5–19/255** and no more. `DEFAULT_LIGHTS_CONF`
+   (`17930.c:15`) explains it: light 2 is white (200,200,200) on the *same*
+   direction vector as light 1, so every lit face already sits at the clamp
+   and an added colour can only show where light 2 does not reach.
+2. **Driving light 2 as well** — replacing the white instead of fighting it —
+   moved the bombers by **≤2/255 (frame noise)** while the arena floor's flat
+   grid lines went from dark green to fully saturated green: puppet 3's
+   colour, the last puppet drawn.
+
+So: the write lands and it *does* tint scene geometry — but **the bomber
+model does not take its colour from the vertex lights at all.** Two light
+configurations, one of them replacing the scene's only bright light, with
+shade-driven geometry in the same frame changing completely. SHADE is not in
+that material's colour equation.
+
+Leading hypothesis, **not verified** and flagged as such: the character
+material path in `func_8000EEE8` (`F280.c:154`), section type 6 — it emits
+`G_TEXTURE_GEN`, `gDPSetPrimColor(255,255,255,255)`,
+`gDPSetEnvColor(64,64,64,255)` and `G_CC_HILITERGBA`, a hilite combiner
+driven by PRIM/ENV and the texture with no SHADE term, and it sets
+`D_8004A390 = TRUE` when it runs. It also explains boot 2's floor asymmetry
+(flat grid lines respond, textured tile faces do not). One boot logging
+`D_8004A390` / the bomber sections' `spEC[].unk0` while a puppet draws would
+settle it.
+
+Also ruled out while reading: **writing file-1 model or texture data** (it
+would tint all four bombers at once — the player included, an instant
+reject), and the **texanim segment swap** (`func_8001B234` even takes an
+explicit file index, so "same script, other file" is a real recolour route)
+— rejected because it needs a second bomber texture asset *and* a matching
+script, i.e. the asset-enumeration class of work §8.40 was already paid for
+once.
+
+The spike code was **reverted, not kept behind an off switch.** It does not
+work and enabling it recolours the arena floor; a knob that does nothing
+useful is the stale-mute antipattern this project removes. The named next
+candidate, for whoever picks identity up after A3: thread the object index
+from `func_8001B014` into a patched `func_8000EEE8` through a native
+"current tint" cell and drive **PRIM/ENV** there instead of the lights —
+two patches, not spike-sized. And note boot 2's leak: light 2 is **not**
+restored per object (light 1 and the ambient appear to be, but they are too
+weak for a leak to show), so any future version must emit its own restore.
+
+### Knobs
+
+| knob | default | effect |
+|---|---|---|
+| `ARENA_PUPPET_MESH=0` | on | §8.40 — bomb placeholders instead of the bomber mesh |
+| `ARENA_PUPPET_ANIM=0` | on | puppets hold the spawn idle bind (the §8.40 behaviour) |
+| `ARENA_PUPPET_BOT=1` | off | player 1 runs a canned idle/run/jump cycle (probe driver) |
+
+`ARENA_PUPPET_TINT` does **not** exist — the spike that would have created it
+came back negative.
+
+### Still open after this session
+
+- **Puppet facing is still the yaw-derived placeholder**, and it now matters:
+  the §8.40 comment excused it because a rotationally-symmetric bomb mesh
+  cannot look wrong, and the puppets now have a run clip and travel. The fix
+  the comment already names: per-puppet dx/dz exports + copy `moveAngle` the
+  way player 0 does.
+- **Vanilla's transition tails are not expressible in a pure chooser**, by
+  design. `timelines.json` says `jumpon` is `[6,19][7,15][8,6][0,…]` — clip
+  **8** is a 6-frame landing squat the puppet skips (observed 7 → 0) — and
+  `stand` is `[3,6][2,4][1,4][0,16]`, a 3→2→1→0 decel blend the puppet also
+  skips (3 → 0). Both are one-shot, length-fixed tails: exactly the shape
+  player 0's pose window exists for. Pose-window territory if the feel round
+  flags it.
+- **The DEAD→hide path is untested at runtime** — the bot never dies. It is
+  fail-safe by construction (`ACTION_NONE` hides; the next frame's
+  unconditional `ACTION_IDLE` un-hides; the spawn block is one-shot-latched on
+  `arena_export_puppet_get_slot(1) < 0`, which never returns below zero, so
+  the slot cannot be stolen) — but construction is not a measurement.

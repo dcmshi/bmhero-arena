@@ -13,7 +13,7 @@ useful commands, and the one-time setup already done.
 
 | doc | what it's for |
 |---|---|
-| `docs/HANDOFF-2026-08-04.md` | **current open items, traps, commands** — read on resume |
+| `docs/HANDOFF-2026-08-05.md` | **current open items, traps, commands** — read on resume |
 | `docs/bmhero-recomp-integration-notes.md` | living RE reference for the fork-side render bridge (patches/exports, per-frame hooks, object & player structs, input, camera, coord mapping). Read before any A1.2+ work. **§8.x is the authority when anything else disagrees.** |
 | `docs/bmhero-battle-arena-design.md` | the mode being built: ruleset, ArenaState spec, tick pipeline, GekkoNet plan, render bridge, host-session model |
 | `docs/bmhero-multiplayer-architecture.md` | overall design: two sim domains, determinism model, netcode topology, milestones |
@@ -23,13 +23,14 @@ useful commands, and the one-time setup already done.
 | `docs/PROJECT-LOG.md` | milestone history (what was done when, and why). Archive — not current state |
 | `README.md` | this repo's layout, build, and the five invariants |
 
-## Where things stand (verified 2026-08-04)
+## Where things stand (verified 2026-08-05)
 
 **Sim:** `TUNE_VERSION` **21**, pinned hash **`fbdb0d08`** (v21: set-ahead —
 grounded sets place 30u ahead like vanilla, user decision 2026-08-04; v20:
 air-set fall arc — hands birth, 8-sample attach, bomb gravity 2.0; v19:
-player↔settled-bomb pushout to the 30u stand gap). Canonical `main` and fork
-`master` both
+player↔settled-bomb pushout to the 30u stand gap). **The sim was not touched on
+2026-08-05** — that session was entirely fork-side (puppet clips, §8.41).
+Canonical `main` and fork `master` both
 **pushed**, gate-green, SOAK GREEN. Per-slice feature branches are retired —
 **work from `master`** on the fork.
 
@@ -42,15 +43,22 @@ of the differ's catches are fixed (§8.36–§8.38) — **10 of 10 verbs are liv
 assertions and the divergence register is EMPTY**. Check 18 fits the air-set
 fall arc against the airset_* goldens (§8.38b). The bridge drives the
 carry/throw/midair/jump clips from vanilla goldens; player 0's Pos.y is
-sim-owned always.
+sim-owned always. Puppets 1–3 also play **per-state clips** now (§8.41): a pure
+state→clip chooser triggering the §8.40 anim funnel on change only, on the
+engine's own frame clock — generic-pool anim instances were **measured** to
+self-advance at +2/frame, so no manual frame pump exists or is needed.
 
 **A1 remaining:** every differ catch is FIXED (the register is empty), #24
 (v19 pushout), #18 (v20 fall arc + check 18), v21 set-ahead (user call),
-and **the real bomber puppets (§8.40)** are all DONE 2026-08-04 — puppets
-1–3 render the actual bomber mesh via a runtime self-describing model
-lookup + the Mirror-Bomber anim bind; screenshot-verified. Left (small):
-per-state puppet clips + P2–P4 visual identity; the battle map stays the
-Nitros stand-in until after A3 (user call). Details: the handoff.
+**the real bomber puppets (§8.40)** and **their per-state clips (§8.41)** are
+all DONE — puppets 1–3 render the actual bomber mesh via a runtime
+self-describing model lookup + the Mirror-Bomber anim bind, and play
+idle/run/jump/carry/hit from their sim state; screenshot- and probe-verified.
+**P2–P4 visual identity is DEFERRED to post-A3:** the tint spike came back
+negative — the per-object light-colour override lands (it recolours scene
+geometry) but the bomber material does not consume SHADE at all (§8.41 has the
+mechanism, both measurements, and the named next candidate). The battle map
+stays the Nitros stand-in until after A3 (user call). Details: the handoff.
 
 **Then A3** — online hardening (ROM-free): rendezvous server + lobby codes,
 host-relay fallback, 4P mesh WAN soak, desync surfacing, player-slot assignment.
