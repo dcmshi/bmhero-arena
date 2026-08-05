@@ -312,7 +312,12 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
             b->fuse    = TUNE_FUSE_TICKS;
             b->pos     = p->pos;
             if (p->pos.y > 0) {
-                b->state = BSTATE_FALLING;       /* drops from the hands */
+                /* v20 (#18): born in the HANDS (+50 Hero, golden
+                 * airset_attach_dy), and it RIDES them for the attach window
+                 * before falling - see BSTATE_FALLING. */
+                b->state  = BSTATE_FALLING;
+                b->pos.y += TUNE_AIRSET_HAND_Y;
+                b->attach = TUNE_AIRSET_ATTACH_TICKS;
             } else {
                 b->state = BSTATE_SETTLED;
                 b->pos.y = 0;
@@ -522,16 +527,39 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
             break;
         }
         case BSTATE_FALLING: {
-            /* v17 air-set drop: straight down from the setter's hands, then
-             * SETTLES (unlike a THROWN bomb, which impact-detonates). No
-             * contact checks while falling - it is a settle-in-progress; the
-             * fuse burns from the set edge, same as a grounded set. */
-            b->vel.y -= TUNE_GRAVITY;
-            b->pos.y += b->vel.y;
-            if (b->pos.y <= 0) {
-                b->pos.y = 0;
-                b->vel.y = 0;
-                b->state = BSTATE_SETTLED;
+            /* Air-set drop, v20 arc-matched to the vanilla measurement
+             * (goldens airset_*): the bomb RIDES the setter's hands for the
+             * attach window (vanilla: 8 samples at +50 Hero above the root),
+             * releases with vy = 0 (the measured first fall delta is exactly
+             * one gravity step), then falls at the BOMB's own gravity
+             * (game 2.0 u/f^2 - NOT the player's 2.0833). Then it SETTLES
+             * (unlike a THROWN bomb, which impact-detonates). No contact
+             * checks while falling - it is a settle-in-progress; the fuse
+             * burns from the set edge, through the attach, same as a
+             * grounded set. An owner who can no longer carry (dead /
+             * tumbling) releases it early, right where it is. */
+            if (b->attach > 0) {
+                const ArenaPlayer* op = &s->players[b->owner];
+                if (op->state == PSTATE_DEAD || op->state == PSTATE_TUMBLE) {
+                    b->attach = 0;              /* hands gone: release here */
+                    b->vel.y  = 0;              /* and fall THIS tick */
+                }
+            }
+            if (b->attach > 0) {
+                const ArenaPlayer* op = &s->players[b->owner];
+                b->pos.x = op->pos.x;
+                b->pos.y = op->pos.y + TUNE_AIRSET_HAND_Y;
+                b->pos.z = op->pos.z;
+                b->attach--;
+                if (b->attach == 0) b->vel.y = 0;   /* release from rest */
+            } else {
+                b->vel.y -= TUNE_BOMB_GRAVITY;
+                b->pos.y += b->vel.y;
+                if (b->pos.y <= 0) {
+                    b->pos.y = 0;
+                    b->vel.y = 0;
+                    b->state = BSTATE_SETTLED;
+                }
             }
             if (b->fuse > 0) b->fuse--;
             if (b->fuse == 0) b->state = BSTATE_EXPLODING;

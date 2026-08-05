@@ -72,7 +72,12 @@ typedef struct {                 /* 32 bytes */
     uint8_t  state;              /* BSTATE_* */
     uint16_t fuse;               /* ticks until detonation once SETTLED */
     uint8_t  bounced;
-    uint8_t  pad0[3];
+    uint8_t  attach;             /* v20: ticks a FALLING air-set still RIDES the
+                                  * owner's hands before releasing (vanilla: the
+                                  * bomb tracks the player at +50 Hero for 8
+                                  * samples, then falls from vy=0 - goldens
+                                  * airset_attach_*). Was pad; size unchanged. */
+    uint8_t  pad0[2];
 } ArenaBomb;
 
 typedef struct {                 /* 16 bytes */

@@ -154,6 +154,34 @@
 #ifndef TUNE_BOMB_H_DAMP
 #define TUNE_BOMB_H_DAMP     Q(0.55)    /* UNREFERENCED since v15 (impact detonation) */
 #endif
+#ifndef TUNE_BOMB_GRAVITY
+#define TUNE_BOMB_GRAVITY    Q(0.0168)  /* v20: game 2.0 u/f^2 x S - the BOMB's
+                                         * own gravity, measured from the vanilla
+                                         * air-set fall (golden airset_fall_gravity:
+                                         * the second difference of the falling Y
+                                         * is exactly 2.0, where the PLAYER falls
+                                         * at 2.0833 = TUNE_GRAVITY). Raw value 68
+                                         * under either unit anchor (2.0xS or
+                                         * 2.0/120). Used by the FALLING drop;
+                                         * thrown (AIRBORNE) bombs keep
+                                         * TUNE_GRAVITY - the throw arc is
+                                         * feel-scaled, not unit-mapped. */
+#endif
+#ifndef TUNE_AIRSET_HAND_Y
+#define TUNE_AIRSET_HAND_Y   Q(0.4167)  /* v20: the air-set bomb is born in the
+                                         * HANDS, 50 Hero units above the player
+                                         * root (golden airset_attach_dy; 50/120
+                                         * bridge scale) - not at the feet. */
+#endif
+#ifndef TUNE_AIRSET_ATTACH_TICKS
+#define TUNE_AIRSET_ATTACH_TICKS 8      /* v20: ticks the bomb rides the hands,
+                                         * BIRTH TICK INCLUDED (the bomb phase
+                                         * runs in the set tick and consumes the
+                                         * first one) = golden
+                                         * airset_attach_samples exactly. Then it
+                                         * releases with vy = 0
+                                         * (airset_release_vy). */
+#endif
 #ifndef TUNE_FUSE_TICKS
 #define TUNE_FUSE_TICKS      150        /* settled -> boom */
 #endif
@@ -225,7 +253,21 @@
 
 /* Bump when any value changes; folded into the session version hash. */
 #ifndef TUNE_VERSION
-#define TUNE_VERSION         19     /* 2026-08-04: (v19) grounded player <->
+#define TUNE_VERSION         20     /* 2026-08-04: (v20) air-set FALL ARC matched
+                                     * to the vanilla measurement (task #18,
+                                     * goldens airset_*): the bomb is born in the
+                                     * HANDS (+50 Hero = TUNE_AIRSET_HAND_Y, was
+                                     * the feet), RIDES them for
+                                     * TUNE_AIRSET_ATTACH_TICKS (new ArenaBomb
+                                     * .attach field, repurposed pad - size
+                                     * unchanged), releases with vy = 0, and
+                                     * falls at the bomb's OWN gravity
+                                     * TUNE_BOMB_GRAVITY (game 2.0, not the
+                                     * player's 2.0833). Owner death/tumble
+                                     * releases early. Fuse unchanged (burns
+                                     * from the set edge, through the attach).
+                                     * Thrown-bomb gravity unchanged.
+                                     * 2026-08-04: (v19) grounded player <->
                                      * settled-bomb PUSHOUT (task #24): a live,
                                      * grounded, non-grace player inside
                                      * TUNE_BOMB_STAND_GAP of a settled bomb is

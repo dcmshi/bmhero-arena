@@ -1,6 +1,7 @@
 /* Deterministic behavior tests for Hero-authentic bomb mechanics.
  * Drives arena_tick with scripted inputs; sim-only, no floats. */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "../src/arena/arena_sim.h"
 #include "../src/arena/arena_tuning.h"
@@ -379,6 +380,98 @@ static void test_set_ignored_while_holding(void) {
           "set is ignored while holding a bomb");
 }
 
+static void test_airset_fall_arc(void) {
+    /* v20 (#18): the air-set bomb's fall matched to the vanilla measurement
+     * (goldens airset_*): born in the HANDS (+50 Hero above the player root),
+     * RIDES them for the attach window, releases with vy = 0, then falls at
+     * the BOMB's own gravity (game 2.0 u/f^2) - not the player's 2.0833. */
+    ArenaState s;
+
+    /* constants ARE the goldens (bridge scale 120; HAND_Y inexact by one
+     * Q LSB, so a whisker of tolerance) */
+    CHECK(llabs((int64_t)TUNE_AIRSET_HAND_Y * 120 - (int64_t)Q(50.0)) <= Q(0.1),
+          "TUNE_AIRSET_HAND_Y x 120 ~= 50 Hero units (golden airset_attach_dy)");
+    CHECK(llabs((int64_t)TUNE_BOMB_GRAVITY * 120 - (int64_t)Q(2.0)) <= Q(0.05),
+          "TUNE_BOMB_GRAVITY x 120 ~= 2.0 u/f^2 (golden airset_fall_gravity)");
+
+    /* jump, set at the top of the arc - same choreography as
+     * test_set_works_midair */
+    start2(&s);
+    run(&s, arena_input_pack(0, 0, 1, 0, 0), 2);
+    run(&s, arena_input_pack(0, 0, 0, 0, 0), 8);
+    CHECK(s.players[0].pos.y > 0, "player is airborne");
+    run(&s, arena_input_pack(0, 0, 0, 0, 1), 1);      /* set mid-air */
+    int bi = -1;
+    for (int i = 0; i < ARENA_MAX_BOMBS; i++)
+        if (s.bombs[i].state == BSTATE_FALLING) { bi = i; break; }
+    CHECK(bi >= 0, "mid-air set drops a FALLING bomb");
+    if (bi < 0) return;
+
+    /* (a) born in the hands and RIDING them: bomb == player + HAND_Y for the
+     * whole attach window (bombs tick after players, so each tick's bomb pos
+     * tracks that same tick's player pos) */
+    CHECK(s.bombs[bi].pos.y == s.players[0].pos.y + TUNE_AIRSET_HAND_Y,
+          "born in the hands, +50 Hero above the root (bomb=%d player=%d)",
+          s.bombs[bi].pos.y, s.players[0].pos.y);
+    /* the set tick consumed the first riding sample, so ATTACH-1 remain -
+     * 8 samples at the hand offset in total, the golden's own count */
+    for (int t = 0; t < TUNE_AIRSET_ATTACH_TICKS - 1; t++) {
+        run(&s, NEUTRAL, 1);
+        CHECK(s.bombs[bi].pos.y == s.players[0].pos.y + TUNE_AIRSET_HAND_Y
+              && s.bombs[bi].pos.x == s.players[0].pos.x
+              && s.bombs[bi].pos.z == s.players[0].pos.z,
+              "attach tick %d: the bomb rides the hands (bomb=%d player=%d)",
+              t, s.bombs[bi].pos.y, s.players[0].pos.y);
+    }
+
+    /* (b) release with vy = 0, then the bomb's own gravity: delta_k = -k*g
+     * exactly in fixed point */
+    q32 y0 = s.bombs[bi].pos.y;
+    run(&s, NEUTRAL, 1);
+    CHECK(s.bombs[bi].pos.y == y0 - TUNE_BOMB_GRAVITY,
+          "first fall step is ONE bomb-gravity from vy=0 (dy=%d want=%d)",
+          s.bombs[bi].pos.y - y0, -TUNE_BOMB_GRAVITY);
+    q32 y1 = s.bombs[bi].pos.y;
+    run(&s, NEUTRAL, 1);
+    CHECK(s.bombs[bi].pos.y == y1 - 2 * TUNE_BOMB_GRAVITY,
+          "second fall step is TWO bomb-gravities (dy=%d want=%d)",
+          s.bombs[bi].pos.y - y1, -2 * TUNE_BOMB_GRAVITY);
+
+    /* (c) still settles on the floor, never impact-detonates */
+    int landed = 0;
+    for (int t = 0; t < 200 && !landed; t++) {
+        run(&s, NEUTRAL, 1);
+        uint8_t st = s.bombs[bi].state;
+        if (st == BSTATE_SETTLED) {
+            landed = 1;
+            CHECK(s.bombs[bi].pos.y == 0, "settles ON the floor");
+        } else if (st != BSTATE_FALLING) {
+            CHECK(0, "a falling set never impact-detonates (state=%d)", st);
+            return;
+        }
+    }
+    CHECK(landed, "the dropped bomb settles within 200 ticks");
+
+    /* (d) owner tumble releases EARLY: the hands are gone, the bomb falls
+     * from where it was */
+    start2(&s);
+    run(&s, arena_input_pack(0, 0, 1, 0, 0), 2);
+    run(&s, arena_input_pack(0, 0, 0, 0, 0), 8);
+    run(&s, arena_input_pack(0, 0, 0, 0, 1), 1);      /* set mid-air */
+    bi = -1;
+    for (int i = 0; i < ARENA_MAX_BOMBS; i++)
+        if (s.bombs[i].state == BSTATE_FALLING) { bi = i; break; }
+    CHECK(bi >= 0, "second air set drops a FALLING bomb");
+    if (bi < 0) return;
+    s.players[0].state = PSTATE_TUMBLE;
+    s.players[0].timer = (uint16_t)(TUNE_TUMBLE_TICKS + TUNE_INVULN_TICKS);
+    q32 yt = s.bombs[bi].pos.y;
+    run(&s, NEUTRAL, 1);
+    CHECK(s.bombs[bi].pos.y == yt - TUNE_BOMB_GRAVITY,
+          "owner tumble releases the attach - free fall from here (dy=%d)",
+          s.bombs[bi].pos.y - yt);
+}
+
 static void test_bomb_stand_pushout(void) {
     /* v19 (#24): a grounded player cannot REST inside a settled bomb - the
      * engine holds them at the vanilla stand gap. Oracle golden
@@ -528,6 +621,7 @@ int main(void) {
     test_fuse_pops_mid_slide();
     test_set_works_midair();
     test_set_ignored_while_holding();
+    test_airset_fall_arc();
     test_bomb_stand_pushout();
     test_no_jump_while_charging();
     if (failures) { printf("%d FAILURES\n", failures); return 1; }

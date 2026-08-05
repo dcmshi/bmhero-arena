@@ -25,10 +25,10 @@ useful commands, and the one-time setup already done.
 
 ## Where things stand (verified 2026-08-04)
 
-**Sim:** `TUNE_VERSION` **19**, pinned hash **`04e8af49`** (v19: player↔settled-
-bomb pushout to the vanilla 30u stand gap; the pin VALUE is unchanged from v18
-because the pinned fuzz never enters the branch — determinism T5 covers it
-instead). Canonical `main` and fork `master` both
+**Sim:** `TUNE_VERSION` **20**, pinned hash **`bd57569b`** (v20: air-set fall
+arc matched to the vanilla measurement — hands birth +50, 8-sample attach,
+release from rest, bomb gravity 2.0; v19: player↔settled-bomb pushout to the
+vanilla 30u stand gap). Canonical `main` and fork `master` both
 **pushed**, gate-green, SOAK GREEN. Per-slice feature branches are retired —
 **work from `master`** on the fork.
 
