@@ -379,6 +379,124 @@ static void test_set_ignored_while_holding(void) {
           "set is ignored while holding a bomb");
 }
 
+static void test_bomb_stand_pushout(void) {
+    /* v19 (#24): a grounded player cannot REST inside a settled bomb - the
+     * engine holds them at the vanilla stand gap. Oracle golden
+     * bomb_stand_xz_gap: land on a bomb in vanilla and you come to rest 30
+     * Hero units away, CENTER-TO-CENTER in XZ, with no vertical support
+     * (bomb_stand_lift 0.0 / supported false; the no-height design call,
+     * user-verified 2026-08-04). The bomb never moves - only a kick moves a
+     * settled bomb. */
+    ArenaState s;
+
+    /* the constant IS the golden: 30 Hero units through the bridge's exact
+     * 120 Hero-per-sim-unit scale. Integer-exact, so assert equality - if
+     * either side drifts, this is the line that says which. */
+    CHECK((int64_t)TUNE_BOMB_STAND_GAP * 120 == (int64_t)Q(30.0),
+          "TUNE_BOMB_STAND_GAP x g_scale(120) == 30 Hero units (golden)");
+
+    /* (a) deep overlap, grounded, stationary, no grace -> pushed out to the
+     * gap in one tick; bomb unmoved and still SETTLED (no kick: vel < min). */
+    start2(&s);
+    s.bombs[0].state = BSTATE_SETTLED; s.bombs[0].owner = 1;
+    s.bombs[0].fuse = TUNE_FUSE_TICKS; s.bombs[0].bounced = 0;
+    s.bombs[0].pos.x = 0; s.bombs[0].pos.y = 0; s.bombs[0].pos.z = 0;
+    s.players[1].live_bombs = 1;
+    s.players[0].pos.x = Q(0.10); s.players[0].pos.y = 0; s.players[0].pos.z = 0;
+    s.players[0].vel.x = s.players[0].vel.y = s.players[0].vel.z = 0;
+    s.players[0].state = PSTATE_IDLE;
+    run(&s, NEUTRAL, 1);
+    q32 gap = qlen2(s.players[0].pos.x - s.bombs[0].pos.x,
+                    s.players[0].pos.z - s.bombs[0].pos.z);
+    CHECK(gap == TUNE_BOMB_STAND_GAP,
+          "deep overlap -> held at the stand gap (dist=%d want=%d)",
+          gap, TUNE_BOMB_STAND_GAP);
+    CHECK(s.bombs[0].pos.x == 0 && s.bombs[0].pos.z == 0,
+          "the bomb never moves (x=%d z=%d)", s.bombs[0].pos.x, s.bombs[0].pos.z);
+    CHECK(s.bombs[0].state == BSTATE_SETTLED,
+          "pushout is not a kick (state=%d)", s.bombs[0].state);
+    CHECK(s.players[0].pos.y == 0,
+          "no vertical support - the player stays ON THE FLOOR (y=%d)",
+          s.players[0].pos.y);
+
+    /* (b) exact overlap: deterministic fixed-axis (+X) eject. */
+    start2(&s);
+    s.bombs[0].state = BSTATE_SETTLED; s.bombs[0].owner = 1;
+    s.bombs[0].fuse = TUNE_FUSE_TICKS; s.bombs[0].bounced = 0;
+    s.bombs[0].pos.x = Q(1.0); s.bombs[0].pos.y = 0; s.bombs[0].pos.z = Q(1.0);
+    s.players[1].live_bombs = 1;
+    s.players[0].pos = s.bombs[0].pos;
+    s.players[0].vel.x = s.players[0].vel.y = s.players[0].vel.z = 0;
+    s.players[0].state = PSTATE_IDLE;
+    run(&s, NEUTRAL, 1);
+    CHECK(s.players[0].pos.x == s.bombs[0].pos.x + TUNE_BOMB_STAND_GAP
+          && s.players[0].pos.z == s.bombs[0].pos.z,
+          "exact overlap ejects along fixed +X (x=%d z=%d)",
+          s.players[0].pos.x, s.players[0].pos.z);
+
+    /* (c) setter grace: an at-the-feet set must NOT shove the setter - grace
+     * (bounced = idx+1) owns that window until they step clear, exactly as it
+     * already protects them from the insta-kick. (The arena sets at the feet
+     * where vanilla places the bomb 30u ahead - recorded v1 simplification.) */
+    start2(&s);
+    run(&s, arena_input_pack(0, 0, 0, 0, 1), 1);
+    run(&s, NEUTRAL, 30);
+    int bi = -1;
+    for (int i = 0; i < ARENA_MAX_BOMBS; i++)
+        if (s.bombs[i].state == BSTATE_SETTLED) { bi = i; break; }
+    CHECK(bi >= 0, "set places a settled bomb");
+    if (bi < 0) return;
+    CHECK(bomb_xz_dist(&s.bombs[bi], s.players[0].pos) < Q(0.2),
+          "setter grace: still standing at their own set (dist=%d)",
+          bomb_xz_dist(&s.bombs[bi], s.players[0].pos));
+
+    /* (d) airborne exemption + landing engagement: a player ABOVE the bomb is
+     * untouched (jump-over stays possible); the tick they come down on it,
+     * the pushout takes them to the gap - the golden's own scenario (vanilla:
+     * set, jump straight up, land back on it -> rest 30u away). */
+    start2(&s);
+    s.bombs[0].state = BSTATE_SETTLED; s.bombs[0].owner = 1;
+    s.bombs[0].fuse = 0xFFFF & 600;   /* long fuse: outlive the fall */
+    s.bombs[0].bounced = 0;
+    s.bombs[0].pos.x = 0; s.bombs[0].pos.y = 0; s.bombs[0].pos.z = 0;
+    s.players[1].live_bombs = 1;
+    s.players[0].pos.x = Q(0.10); s.players[0].pos.y = Q(0.5); s.players[0].pos.z = 0;
+    s.players[0].vel.x = 0; s.players[0].vel.y = Q(0.10); s.players[0].vel.z = 0;
+    s.players[0].state = PSTATE_JUMP;
+    run(&s, NEUTRAL, 1);
+    CHECK(s.players[0].pos.x == Q(0.10) && s.players[0].pos.z == 0,
+          "airborne above the bomb: untouched in XZ (x=%d z=%d)",
+          s.players[0].pos.x, s.players[0].pos.z);
+    int down = 0;
+    for (int t = 0; t < 120 && !down; t++) {
+        run(&s, NEUTRAL, 1);
+        if (s.players[0].pos.y == 0) down = 1;
+    }
+    CHECK(down, "the player lands within 120 ticks");
+    gap = qlen2(s.players[0].pos.x - s.bombs[0].pos.x,
+                s.players[0].pos.z - s.bombs[0].pos.z);
+    CHECK(gap == TUNE_BOMB_STAND_GAP,
+          "landing on the bomb -> pushed to the stand gap (dist=%d want=%d)",
+          gap, TUNE_BOMB_STAND_GAP);
+
+    /* (e) kick priority: a MOVING grounded player inside the gap zone kicks
+     * the bomb (existing rule) - the kick check runs before the pushout, so
+     * the pushout never eats a kick. */
+    start2(&s);
+    s.bombs[0].state = BSTATE_SETTLED; s.bombs[0].owner = 1;
+    s.bombs[0].fuse = TUNE_FUSE_TICKS; s.bombs[0].bounced = 0;
+    s.bombs[0].pos.x = 0; s.bombs[0].pos.y = 0; s.bombs[0].pos.z = 0;
+    s.players[1].live_bombs = 1;
+    s.players[0].pos.x = 0; s.players[0].pos.y = 0; s.players[0].pos.z = -Q(0.15);
+    s.players[0].yaw = 0x8000;                            /* face +Z */
+    s.players[0].vel.x = 0; s.players[0].vel.z = Q(0.10); /* > TUNE_KICK_MIN_VEL */
+    s.players[0].state = PSTATE_RUN;
+    run(&s, NEUTRAL, 1);
+    CHECK(s.bombs[0].state == BSTATE_SLIDING,
+          "a moving player inside the gap still KICKS (state=%d)",
+          s.bombs[0].state);
+}
+
 static void test_no_jump_while_charging(void) {
     /* v18: once the hold crosses TUNE_SPREAD_TICKS the walker is winding up
      * the 4-bomb spread (windmilling) - vanilla does not let you jump out of
@@ -410,6 +528,7 @@ int main(void) {
     test_fuse_pops_mid_slide();
     test_set_works_midair();
     test_set_ignored_while_holding();
+    test_bomb_stand_pushout();
     test_no_jump_while_charging();
     if (failures) { printf("%d FAILURES\n", failures); return 1; }
     printf("bomb_mechanics: ALL TESTS PASSED\n");

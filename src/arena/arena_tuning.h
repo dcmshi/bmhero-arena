@@ -133,6 +133,21 @@
 #ifndef TUNE_BOMB_RADIUS
 #define TUNE_BOMB_RADIUS     Q(0.30)
 #endif
+#ifndef TUNE_BOMB_STAND_GAP
+#define TUNE_BOMB_STAND_GAP  Q(0.25)    /* v19: vanilla equilibrium when a player
+                                         * comes to rest against a settled bomb -
+                                         * 30 Hero units center-to-center in XZ
+                                         * (oracle golden bomb_stand_xz_gap, via
+                                         * the bridge's exact 120 Hero/sim scale:
+                                         * 30/120). DELIBERATELY inside the kick
+                                         * touch distance (PLAYER_RADIUS +
+                                         * BOMB_RADIUS = 0.65): the pushout only
+                                         * catches players who got deep without
+                                         * kicking (straight-down landing, tumble
+                                         * skid, setter after grace). No vertical
+                                         * support - the no-height DESIGN call,
+                                         * user-verified in vanilla 2026-08-04. */
+#endif
 #ifndef TUNE_BOMB_RESTITUTION
 #define TUNE_BOMB_RESTITUTION Q(0.40)   /* UNREFERENCED since v15 (impact detonation) */
 #endif
@@ -210,7 +225,25 @@
 
 /* Bump when any value changes; folded into the session version hash. */
 #ifndef TUNE_VERSION
-#define TUNE_VERSION         18     /* 2026-08-01: (v18) feel round 8: KICK_SPEED
+#define TUNE_VERSION         19     /* 2026-08-04: (v19) grounded player <->
+                                     * settled-bomb PUSHOUT (task #24): a live,
+                                     * grounded, non-grace player inside
+                                     * TUNE_BOMB_STAND_GAP of a settled bomb is
+                                     * pushed out to the vanilla 30-Hero-unit
+                                     * stand gap (golden bomb_stand_xz_gap); the
+                                     * bomb never moves - only a kick moves a
+                                     * settled bomb. No vertical support (the
+                                     * no-height design call). Setter/kicker
+                                     * grace (bounced = idx+1) still lets the
+                                     * setter coexist with their at-the-feet set
+                                     * until they step clear - the arena sets at
+                                     * the feet where vanilla places the bomb
+                                     * 30u AHEAD (golden set_place_offset), a
+                                     * recorded v1 simplification; whether to
+                                     * adopt vanilla's set-ahead placement is an
+                                     * open design question, noted in the
+                                     * handoff.
+                                     * 2026-08-01: (v18) feel round 8: KICK_SPEED
                                      * 0.14 -> 0.165 (> run 0.151; the kicker could
                                      * catch and push the bomb - vanilla measured
                                      * ~0.149, near-parity, and prevents the push

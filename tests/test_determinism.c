@@ -100,6 +100,47 @@ int main(void) {
         }
     }
 
+    /* ---- T5 pushout-branch determinism (v19): the random fuzz above never
+     * reaches the player-at-rest-inside-a-settled-bomb state (moving players
+     * KICK; the v19 pin staying at its v18 value proved the fuzz can't enter
+     * the branch), so the branch gets its own coverage: manufacture the state
+     * deterministically, assert the pushout actually FIRES (a branch a suite
+     * never enters is a branch it can't defend), then replay the window from
+     * a snapshot - save/load + re-sim across the new arithmetic. Diagonal
+     * offset on purpose: it walks the qdiv/qmul rounding path, not the exact
+     * axis-aligned one. */
+    {
+        static uint32_t t5_hashes[120];
+        ArenaInput idle[ARENA_MAX_PLAYERS];
+        for (int i = 0; i < ARENA_MAX_PLAYERS; i++)
+            idle[i] = arena_input_pack(0, 0, 0, 0, 0);
+        arena_init(&s, 0, 4, 0xB0BB1E5);
+        for (int t = 0; t <= TUNE_COUNTDOWN_TICKS; t++) arena_tick(&s, idle);
+        s.bombs[0].state = BSTATE_SETTLED; s.bombs[0].owner = 1;
+        s.bombs[0].fuse  = 400;            s.bombs[0].bounced = 0;
+        s.bombs[0].pos.x = 0; s.bombs[0].pos.y = 0; s.bombs[0].pos.z = 0;
+        s.players[1].live_bombs = 1;
+        s.players[0].pos.x = Q(0.07); s.players[0].pos.y = 0;
+        s.players[0].pos.z = Q(0.03);
+        s.players[0].vel.x = s.players[0].vel.y = s.players[0].vel.z = 0;
+        s.players[0].state = PSTATE_IDLE;
+        arena_save(&s2, &s);                        /* snapshot BEFORE the window */
+        for (int t = 0; t < 120; t++) { arena_tick(&s, idle); t5_hashes[t] = arena_hash(&s); }
+        {
+            q32 gap = qlen2(s.players[0].pos.x - s.bombs[0].pos.x,
+                            s.players[0].pos.z - s.bombs[0].pos.z);
+            CHECK(gap >= TUNE_BOMB_STAND_GAP && gap <= TUNE_BOMB_STAND_GAP + Q(0.01),
+                  "T5 liveness: the pushout branch fired and converged (gap=%d)", gap);
+        }
+        for (int t = 0; t < 120; t++) {
+            arena_tick(&s2, idle);
+            if (arena_hash(&s2) != t5_hashes[t]) {
+                CHECK(0, "T5 pushout window replay diverged at +%d", t);
+                break;
+            }
+        }
+    }
+
     printf("state size: %zu bytes; %d tick(s) simulated x3 passes\n",
            sizeof(ArenaState), TICKS);
     if (failures == 0) { printf("ALL TESTS PASSED\n"); return 0; }

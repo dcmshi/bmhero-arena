@@ -25,8 +25,10 @@ useful commands, and the one-time setup already done.
 
 ## Where things stand (verified 2026-08-04)
 
-**Sim:** `TUNE_VERSION` **18**, pinned hash **`04e8af49`** (v18: kick outruns
-the kicker; no jump while charging). Canonical `main` and fork `master` both
+**Sim:** `TUNE_VERSION` **19**, pinned hash **`04e8af49`** (v19: player↔settled-
+bomb pushout to the vanilla 30u stand gap; the pin VALUE is unchanged from v18
+because the pinned fuzz never enters the branch — determinism T5 covers it
+instead). Canonical `main` and fork `master` both
 **pushed**, gate-green, SOAK GREEN. Per-slice feature branches are retired —
 **work from `master`** on the fork.
 
@@ -44,11 +46,13 @@ clips from vanilla goldens; player 0's Pos.y is sim-owned always.
 push-entry + set tail; #30 §8.37 jump driver + delivery-anchored markers;
 #31 §8.37 toss chain) and check 17 runs 9-of-10 verbs live (only
 `windupwalk` registered, non-comparable by construction; floors now derived
-— #32/#33). Left: #24 pushout (sim v19), #18 air-set fall-arc golden,
-puppets 1–3 are still bomb-mesh placeholders; the arena is the Nitros render
-stand-in, not a purpose-built battle map. The standing-on-bombs DESIGN call
-is RESOLVED (user-verified in single player 2026-08-04): no height — vanilla
-parity is the design. Details and priority order: the handoff.
+— #32/#33). #24 pushout is DONE (sim v19, 2026-08-04). Left: #18 air-set
+fall-arc golden, puppets 1–3 are still bomb-mesh placeholders; the arena is
+the Nitros render stand-in, not a purpose-built battle map. The
+standing-on-bombs DESIGN call is RESOLVED (user-verified in single player
+2026-08-04): no height — vanilla parity is the design; one open user call
+remains on vanilla's set-AHEAD placement (handoff item 4). Details and
+priority order: the handoff.
 
 **Then A3** — online hardening (ROM-free): rendezvous server + lobby codes,
 host-relay fallback, 4P mesh WAN soak, desync surfacing, player-slot assignment.

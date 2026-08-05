@@ -606,6 +606,36 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
                 break;
             }
             if (b->state != BSTATE_SETTLED) break;
+            /* v19 pushout (#24): a grounded player cannot REST inside a
+             * settled bomb - hold them at the vanilla stand gap (oracle
+             * golden bomb_stand_xz_gap: land on a bomb and you come to rest
+             * 30 Hero units away, center-to-center; no vertical support -
+             * the no-height design call, user-verified 2026-08-04). The
+             * BOMB never moves: only a kick moves a settled bomb. Runs
+             * after the kick loop, so a moving player still kicks first;
+             * the gap (0.25) sits INSIDE the kick touch distance (0.65),
+             * so this only catches players who got deep without kicking:
+             * straight-down landings, tumble skids, the setter once grace
+             * has cleared. Grace itself (bounced = idx+1) is exempt - the
+             * arena sets at the feet where vanilla places the bomb 30u
+             * ahead (golden set_place_offset), and grace owns that window
+             * exactly as it does for the insta-kick. */
+            for (int pj = 0; pj < s->num_players; pj++) {   /* fixed order */
+                ArenaPlayer* p = &s->players[pj];
+                if (p->state == PSTATE_DEAD) continue;
+                if (b->bounced == (uint8_t)(pj + 1)) continue;  /* grace */
+                if (!on_ground(p)) continue;                /* jump-over */
+                q32 dx = p->pos.x - b->pos.x, dz = p->pos.z - b->pos.z;
+                q32 d  = qlen2(dx, dz);
+                if (d >= TUNE_BOMB_STAND_GAP) continue;
+                if (d > 0) {
+                    q32 push = TUNE_BOMB_STAND_GAP - d;
+                    p->pos.x += qmul(qdiv(dx, d), push);
+                    p->pos.z += qmul(qdiv(dz, d), push);
+                } else {
+                    p->pos.x += TUNE_BOMB_STAND_GAP;    /* exact overlap: fixed axis */
+                }
+            }
             if (b->fuse > 0) b->fuse--;
             if (b->fuse == 0) b->state = BSTATE_EXPLODING;
             break;
