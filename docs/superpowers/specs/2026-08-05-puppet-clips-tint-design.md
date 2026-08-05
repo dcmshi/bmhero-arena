@@ -108,8 +108,12 @@ the measurement is recorded in §8.x.
   absence of a tag was the diagnosis). Any guard failure leaves the spawn
   idle bind in place and logs why.
 - Soak: new probes on `[panim]` — clip transitions occur (`-Expect` on
-  idx 0→3 for a moving puppet; sim bots do move) and frames rise. Existing
-  soak + oracle-gate 18/18 must stay green **untouched**.
+  idx 0→3 for a moving puppet) and frames rise. Moving a puppet takes a
+  deliberate driver: players 1–3 receive hard neutral input every tick
+  (`arena_bridge.cpp`) and never move on their own, so probes drive player 1
+  via `ARENA_PUPPET_BOT=1` (a canned input cycle: idle / run forward / jump
+  tap / idle). Existing soak + oracle-gate 18/18 must stay green
+  **untouched**.
 - Falsifiability check (gates-must-be-falsifiable memory): before trusting the
   new probe, break it once on purpose (`ARENA_PUPPET_ANIM=0` must make the
   transition probe FAIL, not silently pass).
