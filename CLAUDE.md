@@ -35,8 +35,10 @@ Canonical `main` and fork `master` both
 **work from `master`** on the fork.
 
 **Done:** A0 (headless deterministic sim), A2 (GekkoNet SyncSession), the SDL
-debug viewer, the tuning-loop toolkit, A1.0 → **A1.5**, feel rounds 4–12
-(round 12 user-verified 2026-08-04), and **oracle 2.0**: choreography lives in
+debug viewer, the tuning-loop toolkit, A1.0 → **A1.5**, feel rounds 4–13
+(round 13 user-verified 2026-08-05: v19–v21 + real-bomber puppets + per-state
+clips, one combined boot; facing + transition tails NOT flagged — they stay
+deferred), and **oracle 2.0**: choreography lives in
 tick-unit verb tables and gate check 17 diffs the arena's whole per-verb anim
 timeline against vanilla's (§8.32–§8.38), with derived floors (#32/#33). All
 of the differ's catches are fixed (§8.36–§8.38) — **10 of 10 verbs are live
