@@ -2617,3 +2617,102 @@ construction for any verb added past it), and a **depth floor**
 prefix while the verb count stands still. Both fail closed: a broken header
 parse derives 0 (explicitly failed), a missing subtotal line parses as −1 —
 so a green check 17 is itself evidence both floors evaluated.
+
+## 8.38 Tasks #24 + #18 + windupwalk (2026-08-04): the stand gap, the fall arc, and an empty register
+
+Three closures in one session; the first two are sim versions (v19, v20), the
+third empties `known-divergences.json`. The gate is **18 checks** now.
+
+### (a) #24 — the bomb-stand pushout (sim v19, hash value unchanged)
+
+A grounded, live, non-grace player inside `TUNE_BOMB_STAND_GAP` (Q(0.25) =
+golden `bomb_stand_xz_gap` 30 Hero units through the bridge's exact 120
+scale) of a SETTLED bomb is pushed out to the gap in the bomb phase; the
+bomb never moves (only a kick moves a settled bomb). The gap sits INSIDE the
+kick touch distance (0.65), so the pushout only catches players who got deep
+without kicking — straight-down landings, tumble skids. Setter/kicker grace
+stays exempt, which preserves the at-the-feet set.
+
+Two records worth keeping:
+- **The pinned hash did not move.** The pinned fuzz's random walkers always
+  KICK (they are moving), so the rest-inside-a-bomb state is unreachable by
+  it — v19 kept `04e8af49` with only the version bumping. A suite that never
+  enters a branch cannot defend it, so determinism **T5** manufactures the
+  state, asserts the branch FIRES (liveness), and replays the window from a
+  snapshot.
+- **The set-ahead question is open, on purpose.** Vanilla PLACES a set bomb
+  30u ahead (`set_place_offset`) where the arena sets at the feet under
+  grace — so the arena still diverges in the golden's own self-bomb scenario
+  (set, jump straight up, land back: grace is live, no pushout). Adopting
+  set-ahead would close it AND let an end-to-end gap probe ride the jumpon
+  choreography — but it changes a feel-tested behavior, so it is the user's
+  call (handoff item 4). None of the 10 verb timelines moved: jumpon lands
+  on the setter's OWN fresh bomb, exactly the grace case.
+
+### (b) #18 — the air-set fall arc (sim v20, goldens from the SAVED log)
+
+No vanilla boot was needed: `tools/oracle/vanilla-verbtable.log` (the oracle
+2.0 run) already carried the whole arc in `[oracle-bomb]`/`[oracle-player]`.
+The measured anatomy, now five goldens extracted by `oracle.ps1` (`-FromLog`):
+
+- the bomb is born at the R-press and **RIDES THE HANDS** — bombY − playerY
+  holds **+50.0** exactly for **8 samples** (birth row included), while the
+  player still rises;
+- it releases with **vy = 0** (the first fall delta is exactly one gravity
+  step — NOT the player's ongoing upward velocity);
+- it falls at the **bomb's own gravity, exactly 2.0 u/f²** (second
+  difference of the falling Y; the player's is 2.0833) — the landing delta
+  is a partial step (floor clamp) and is excluded from the fit;
+- 16 fall frames to rest at Y=30 (the known rest lift).
+
+Sim v20 mirrors it: `ArenaBomb.attach` (repurposed pad byte, size unchanged)
+tracks the owner at `+TUNE_AIRSET_HAND_Y` for `TUNE_AIRSET_ATTACH_TICKS`
+(8 — the golden's own sample count, birth tick included, because the bomb
+phase runs in the set tick and consumes the first sample), then releases
+from rest and falls at `TUNE_BOMB_GRAVITY` (raw 68 under either unit
+anchor). Owner death/tumble releases early and falls THAT tick. Thrown-bomb
+(AIRBORNE) gravity deliberately unchanged — the throw arc is feel-scaled.
+The pin moved (`bd57569b`): the fuzz DOES air-set.
+
+Fork side: `[fallarc]` logs every FALLING bomb post-tick (y, owner y,
+attach). Gate **check 18** rides the existing mode-12 boot: the leading rows
+at the golden hand offset must number exactly `airset_attach_samples` — the
+release row logs attach=0 while still AT the offset, so **offset rows are
+the unit, not attach>0 rows** — then the fall deltas must be an arithmetic
+series at the golden gravity from rest. `fall_frames` is deliberately NOT
+asserted (scenario-bound: duration follows from release height; the law
+pins the arc). Fails closed on a missing channel (verified against an m13
+log: 0 lines → FAIL). First live run: attach 8/8, g=1.992, v0=0.
+
+A tooling footnote: PS7's `ConvertTo-Json` reformats `timelines.json`
+without changing content — the committed PS5 formatting was kept to avoid a
+380-line noise diff. Only `goldens.json` took the delta.
+
+### (c) windupwalk — the last register entry, closed by its own diagnosis
+
+The register line said it: "not prefix-shaped, and vanilla opens with a
+4-frame transition clip 27". Two mechanisms, two known devices:
+
+1. **The missing transition.** Vanilla's windupwalk timeline is
+   `[26,3][27,4][28,53]` — a 4-frame clip 27 bridges windmill→charge-run;
+   the bridge cut straight to 28. The carry driver now latches 27 on the
+   ENTRY edge into charged+moving with budget 6: the golden 4 plus the
+   roller's 2 — the driver only re-enters at `g_pose_frames <= 2`, so a
+   budget of golden+2 shows exactly the golden frames before 28 re-latches.
+   The edge memory (`g_chargewalk_prev`) resets on release OUTSIDE the
+   driver block, because the block stops running the moment `held_bomb`
+   clears — a block-local static would silently lose the SECOND
+   charge-walk's transition in a match.
+2. **The non-prefix window.** Vanilla sticks 60t; battle sticks 20t — past
+   t=338 the two input streams diverge BY DESIGN (vanilla still running,
+   battle decelerating back into the windmill). A battle-only `windupstop`
+   marker (t=338, the `postjump` device) ends the compared window where the
+   shared input does.
+
+Result: `windupwalk PASS 2 runs over 15f`; the differ reads **10 verbs, 20
+runs (20 in passing verbs), 0 failed**; `known-divergences.json` is `{}` —
+the empty register is the success state the stale-exception rule was built
+around. `$AD_MIN_PASS_RUNS` moved 18 → 20 (the differ's own printed
+subtotal; boundary = proof it evaluated). Falsified in both directions:
+`ARENA_WINDUP_TRANS_FRAMES=0` makes windupwalk FAIL (run count 2 vs 1) AND
+drops the subtotal below the floor.

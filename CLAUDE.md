@@ -36,23 +36,21 @@ vanilla 30u stand gap). Canonical `main` and fork `master` both
 debug viewer, the tuning-loop toolkit, A1.0 → **A1.5**, feel rounds 4–12
 (round 12 user-verified 2026-08-04), and **oracle 2.0**: choreography lives in
 tick-unit verb tables and gate check 17 diffs the arena's whole per-verb anim
-timeline against vanilla's (§8.32–§8.37), with derived floors (#32/#33). All
-three of the differ's first-run catches are fixed (§8.36 push-entry + set
-tail; §8.37 jump driver + toss chain + delivery-anchored markers); 9 of 10
-verbs are live assertions. The bridge drives the carry/throw/midair/jump
-clips from vanilla goldens; player 0's Pos.y is sim-owned always.
+timeline against vanilla's (§8.32–§8.38), with derived floors (#32/#33). All
+of the differ's catches are fixed (§8.36–§8.38) — **10 of 10 verbs are live
+assertions and the divergence register is EMPTY**. Check 18 fits the air-set
+fall arc against the airset_* goldens (§8.38b). The bridge drives the
+carry/throw/midair/jump clips from vanilla goldens; player 0's Pos.y is
+sim-owned always.
 
-**A1 remaining:** all three differ catches are FIXED (2026-08-04: #29 §8.36
-push-entry + set tail; #30 §8.37 jump driver + delivery-anchored markers;
-#31 §8.37 toss chain) and check 17 runs 9-of-10 verbs live (only
-`windupwalk` registered, non-comparable by construction; floors now derived
-— #32/#33). #24 pushout is DONE (sim v19, 2026-08-04). Left: #18 air-set
-fall-arc golden, puppets 1–3 are still bomb-mesh placeholders; the arena is
-the Nitros render stand-in, not a purpose-built battle map. The
-standing-on-bombs DESIGN call is RESOLVED (user-verified in single player
-2026-08-04): no height — vanilla parity is the design; one open user call
-remains on vanilla's set-AHEAD placement (handoff item 4). Details and
-priority order: the handoff.
+**A1 remaining:** every differ catch is FIXED (#29–#31 §8.36–§8.37;
+windupwalk §8.38c — the register is empty) and #24 (v19 pushout), #18 (v20
+fall arc + check 18) are DONE (2026-08-04). Left: puppets 1–3 are still
+bomb-mesh placeholders and the arena is the Nitros render stand-in — both
+scoped in the handoff (item 7) and awaiting a user call, as is vanilla's
+set-AHEAD placement (handoff item 4). The standing-on-bombs DESIGN call is
+RESOLVED (user-verified 2026-08-04): no height — vanilla parity is the
+design. Details and priority order: the handoff.
 
 **Then A3** — online hardening (ROM-free): rendezvous server + lobby codes,
 host-relay fallback, 4P mesh WAN soak, desync surfacing, player-slot assignment.
