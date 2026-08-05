@@ -2716,3 +2716,37 @@ around. `$AD_MIN_PASS_RUNS` moved 18 → 20 (the differ's own printed
 subtotal; boundary = proof it evaluated). Falsified in both directions:
 `ARENA_WINDUP_TRANS_FRAMES=0` makes windupwalk FAIL (run count 2 vs 1) AND
 drops the subtotal below the floor.
+
+## 8.39 Set-ahead (2026-08-04, user decision): sim v21, and the hands are in front of the body
+
+The user closed handoff item 4: **the grounded set now places the bomb 30
+Hero units AHEAD along facing**, like vanilla (golden `set_place_offset`),
+ending the at-the-feet v1 simplification. Two facts made the change nearly
+free:
+
+- The offset **equals the v19 stand gap**, so the setter rests exactly AT
+  the pushout equilibrium — no overlap, no shove, and grace never has to
+  paper over a placement artifact again. The golden's own self-bomb
+  scenario (set, jump straight up, land back) now reproduces vanilla's 30u
+  rest gap geometrically instead of via a grace exemption.
+- The saved vanilla log had one more measurement waiting: during the
+  airsetR attach prefix the bomb rides **32.0 Hero units ahead** of the
+  player root (constant across all 8 samples) — the hands are in front of
+  the body. Extracted as golden `airset_attach_dxz`; the v21 attach anchor
+  is root + `TUNE_AIRSET_HAND_FWD` (32/120) along the CURRENT facing +
+  `TUNE_AIRSET_HAND_Y` up, so the dropped bomb also rests ~30u ahead like
+  vanilla's, instead of under the setter (which would have re-created the
+  landing-shove the pushout was built to avoid).
+
+Both placements are wall-clamped (arena 0 has no pillars; pillar clamping
+waits for a map that has them). Setter grace is UNCHANGED — an on-the-run
+set is within the kick touch distance immediately (0.25 < 0.65), and grace
+is what keeps that from insta-kicking, same as ever.
+
+Verification: `[fallarc]` gained a `dxz` field and check 18 asserts the
+attach rows sit at the golden forward offset (±1 Hero) — first run: attach
+8 rows at dxz=32 (golden 32.0), g=1.992, v0=0. The differ stayed 10/10,
+20/20 (anims never depended on placement); mode-10's kick walk-back still
+contacts (0.18 su lateral displacement vs the 0.65 touch radius) and
+mode-13's jumpon now lands BESIDE the bomb — vanilla's own geometry, and
+check 13's plateau stays floor-level-legal. Gate 18/18 + SOAK GREEN.
