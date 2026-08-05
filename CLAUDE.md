@@ -44,14 +44,13 @@ fall arc against the airset_* goldens (§8.38b). The bridge drives the
 carry/throw/midair/jump clips from vanilla goldens; player 0's Pos.y is
 sim-owned always.
 
-**A1 remaining:** every differ catch is FIXED (#29–#31 §8.36–§8.37;
-windupwalk §8.38c — the register is empty) and #24 (v19 pushout), #18 (v20
-fall arc + check 18) are DONE (2026-08-04). Left: puppets 1–3 are still
-bomb-mesh placeholders and the arena is the Nitros render stand-in — both
-scoped in the handoff (item 7) and awaiting a user call, as is vanilla's
-set-AHEAD placement (handoff item 4). The standing-on-bombs DESIGN call is
-RESOLVED (user-verified 2026-08-04): no height — vanilla parity is the
-design. Details and priority order: the handoff.
+**A1 remaining:** every differ catch is FIXED (the register is empty), #24
+(v19 pushout), #18 (v20 fall arc + check 18), v21 set-ahead (user call),
+and **the real bomber puppets (§8.40)** are all DONE 2026-08-04 — puppets
+1–3 render the actual bomber mesh via a runtime self-describing model
+lookup + the Mirror-Bomber anim bind; screenshot-verified. Left (small):
+per-state puppet clips + P2–P4 visual identity; the battle map stays the
+Nitros stand-in until after A3 (user call). Details: the handoff.
 
 **Then A3** — online hardening (ROM-free): rendezvous server + lobby codes,
 host-relay fallback, 4P mesh WAN soak, desync surfacing, player-slot assignment.

@@ -2750,3 +2750,64 @@ attach rows sit at the golden forward offset (±1 Hero) — first run: attach
 contacts (0.18 su lateral displacement vs the 0.65 touch radius) and
 mode-13's jumpon now lands BESIDE the bomb — vanilla's own geometry, and
 check 13's plateau stays floor-level-legal. Gate 18/18 + SOAK GREEN.
+
+## 8.40 The real bomber (2026-08-04): three boots from white-screen to four bombers
+
+The user green-lit the §8.5b live lead ("trace who binds `gPlayerObject`'s
+anim instance") and the dead end dissolved almost immediately — not by new
+instrumentation but because the intervening weeks had already decoded the
+relevant machinery for other reasons:
+
+```c
+void func_8001C0EC(s32 obj, s32 part, s32 idx, s32 fileID, u32* arr) {
+    func_8001BE6C(obj, part, idx, (void*)&gFileArray[fileID].ptr[arr[idx]]);
+}
+```
+
+The anim-trigger funnel (§8.23's patch target!) resolves its source as
+**file + offset-table[idx]** — so `D_80115808`, the table the bridge has
+passed for every player-0 pose since the walker gate, IS the bomber anim
+offset table, into file 1, resident in every arena. And `ED210.c`'s
+`func_800FBCB0` — the **Mirror Room's copy-bomber** — is the engine's own
+puppet recipe: spawn a non-player object with the bomber model, bind via
+`func_8001C0EC(obj, 0, idx, 1, &D_80115808)`, set the frame with
+`func_8001B6BC`. (It also proves anim instances are self-contained: every
+bind frees the previous global parse scratch `D_8016E3AC`, and the Mirror
+Room has two objects binding alternately without dangling.)
+
+Three boots to a working recipe, each killing one wrong assumption:
+
+1. **cfg 0x13 crashed the boot** (died between dbg tags 40 and 41 — inside
+   the bind). `func_80010408` explains: cfg indexes a section table
+   (`count <= cfg` → NULL modelTag → `func_8001191C` derefs it → host AV).
+   The punchline arrived in boot 3: the in-level file 1 has **19 = 0x13
+   sections** — the transcribed menu-context cfg was out of range by
+   exactly one-past-the-end.
+2. **The registry route is closed in-level.** `gObjInfo`'s player entry is
+   NULL even at the FIRST routine call (dbg 35/36 = 0) — the roster only
+   exists in the frontend, where the player loader (`2BF00.c:588`,
+   located this session: DecompressFile into slot 1, model from
+   `gFileArray[1].ptr` whole, cfg/part from the registry, anims via
+   `.animPtr`) originally ran. Capture-early-use-late is not available
+   inside the arena boot.
+3. **The file is self-describing, so nothing needs transcribing.**
+   `func_8001BD44` records the SOURCE on the model-pool slot
+   (`D_80165290[slot].unk0 = src`), and the source header carries its own
+   section table (+4 count, +0xC inline 12-byte entries, type +0 == 1 =
+   skeletal model). The puppet spawn now walks the PLAYER's live source at
+   runtime: found cfg **16** of 19, src `0x8028b720` == `gFileArray[1].ptr`
+   exactly (dbg 45/46/47). All three puppets spawned (slots 14/15/16) and
+   bound (tag 41 ×3); the whole mode-13 choreography ran to `[hitpose]`
+   beside them; the screenshot shows **four bombers** on the corner tiles.
+
+Fail-open discipline throughout: every guard failure degrades to the bomb
+placeholder, never a crash — which is also what turned boot 2's silent
+fallback into evidence (a green gate with no tag 45 was the diagnosis).
+`ARENA_PUPPET_MESH=0` restores the placeholders (one-binary A/B).
+
+**Remaining, deliberately deferred:** the puppets hold the idle bind —
+driving run/jump clips from each puppet's sim state through the same funnel
+is the natural follow-up; whether generic-pool instances self-advance their
+frames is still unmeasured (the still frame can't say); and all four
+bombers share the one resident skin, so P2–P4 visual identity (tint /
+marker) is an open design item.
