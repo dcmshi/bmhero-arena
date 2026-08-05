@@ -25,10 +25,11 @@ useful commands, and the one-time setup already done.
 
 ## Where things stand (verified 2026-08-04)
 
-**Sim:** `TUNE_VERSION` **20**, pinned hash **`bd57569b`** (v20: air-set fall
-arc matched to the vanilla measurement — hands birth +50, 8-sample attach,
-release from rest, bomb gravity 2.0; v19: player↔settled-bomb pushout to the
-vanilla 30u stand gap). Canonical `main` and fork `master` both
+**Sim:** `TUNE_VERSION` **21**, pinned hash **`fbdb0d08`** (v21: set-ahead —
+grounded sets place 30u ahead like vanilla, user decision 2026-08-04; v20:
+air-set fall arc — hands birth, 8-sample attach, bomb gravity 2.0; v19:
+player↔settled-bomb pushout to the 30u stand gap). Canonical `main` and fork
+`master` both
 **pushed**, gate-green, SOAK GREEN. Per-slice feature branches are retired —
 **work from `master`** on the fork.
 

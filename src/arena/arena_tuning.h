@@ -173,6 +173,27 @@
                                          * root (golden airset_attach_dy; 50/120
                                          * bridge scale) - not at the feet. */
 #endif
+#ifndef TUNE_AIRSET_HAND_FWD
+#define TUNE_AIRSET_HAND_FWD Q(0.2667)  /* v21: ... and 32 Hero units AHEAD of
+                                         * the root (golden airset_attach_dxz;
+                                         * 32/120) - the hands are in front of
+                                         * the body. The whole attach anchor is
+                                         * root + fwd*facing + hand_y up. */
+#endif
+#ifndef TUNE_SET_PLACE_OFFSET
+#define TUNE_SET_PLACE_OFFSET Q(0.25)   /* v21: a GROUNDED set places the bomb
+                                         * 30 Hero units ahead along facing
+                                         * (golden set_place_offset; 30/120) -
+                                         * vanilla parity, user decision
+                                         * 2026-08-04 (was: at the feet, a v1
+                                         * simplification). Equals the stand
+                                         * gap, so the setter rests exactly AT
+                                         * the pushout equilibrium: no overlap,
+                                         * no shove. Placement is wall-clamped
+                                         * (arena 0 has no pillars; pillar
+                                         * clamping deferred until a map has
+                                         * them). */
+#endif
 #ifndef TUNE_AIRSET_ATTACH_TICKS
 #define TUNE_AIRSET_ATTACH_TICKS 8      /* v20: ticks the bomb rides the hands,
                                          * BIRTH TICK INCLUDED (the bomb phase
@@ -253,7 +274,22 @@
 
 /* Bump when any value changes; folded into the session version hash. */
 #ifndef TUNE_VERSION
-#define TUNE_VERSION         20     /* 2026-08-04: (v20) air-set FALL ARC matched
+#define TUNE_VERSION         21     /* 2026-08-04: (v21) SET-AHEAD placement
+                                     * (user decision): a grounded set places
+                                     * the bomb TUNE_SET_PLACE_OFFSET (30 Hero)
+                                     * ahead along facing - vanilla parity via
+                                     * golden set_place_offset; the setter now
+                                     * rests exactly at the v19 stand gap. The
+                                     * air-set attach anchor gains the forward
+                                     * component too: root + 32 Hero ahead
+                                     * (TUNE_AIRSET_HAND_FWD, new golden
+                                     * airset_attach_dxz) + 50 up, so the
+                                     * dropped bomb rests ~30u ahead like
+                                     * vanilla's instead of under the setter.
+                                     * Both placements wall-clamped. Setter
+                                     * grace unchanged (an on-the-run set must
+                                     * not insta-kick).
+                                     * 2026-08-04: (v20) air-set FALL ARC matched
                                      * to the vanilla measurement (task #18,
                                      * goldens airset_*): the bomb is born in the
                                      * HANDS (+50 Hero = TUNE_AIRSET_HAND_Y, was

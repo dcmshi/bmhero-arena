@@ -313,14 +313,33 @@ static void player_tick(ArenaState* s, int pi, ArenaInput in, const ArenaGeom* g
             b->pos     = p->pos;
             if (p->pos.y > 0) {
                 /* v20 (#18): born in the HANDS (+50 Hero, golden
-                 * airset_attach_dy), and it RIDES them for the attach window
-                 * before falling - see BSTATE_FALLING. */
+                 * airset_attach_dy) - and v21: the hands are IN FRONT of the
+                 * body (+32 Hero along facing, golden airset_attach_dxz).
+                 * It RIDES them for the attach window before falling - see
+                 * BSTATE_FALLING. */
                 b->state  = BSTATE_FALLING;
+                b->pos.x +=  qmul(qsin(p->yaw), TUNE_AIRSET_HAND_FWD);
+                b->pos.z += -qmul(qcos(p->yaw), TUNE_AIRSET_HAND_FWD);
                 b->pos.y += TUNE_AIRSET_HAND_Y;
                 b->attach = TUNE_AIRSET_ATTACH_TICKS;
             } else {
+                /* v21 (user decision 2026-08-04): a grounded set places the
+                 * bomb AHEAD along facing, like vanilla (golden
+                 * set_place_offset 30 Hero) - not at the feet. The offset
+                 * equals the v19 stand gap, so the setter rests exactly at
+                 * the pushout equilibrium: no overlap, no shove. */
                 b->state = BSTATE_SETTLED;
+                b->pos.x +=  qmul(qsin(p->yaw), TUNE_SET_PLACE_OFFSET);
+                b->pos.z += -qmul(qcos(p->yaw), TUNE_SET_PLACE_OFFSET);
                 b->pos.y = 0;
+            }
+            /* setting INTO a wall cannot place the bomb outside the play
+             * bounds (arena 0 has no pillars; pillar clamping waits for a
+             * map that has them) */
+            {
+                q32 bx = wall_x - TUNE_BOMB_RADIUS, bz = wall_z - TUNE_BOMB_RADIUS;
+                b->pos.x = qclamp(b->pos.x, -bx, bx);
+                b->pos.z = qclamp(b->pos.z, -bz, bz);
             }
             b->bounced = (uint8_t)(pi + 1);     /* setter grace */
             p->live_bombs++;
@@ -547,9 +566,17 @@ void arena_tick(ArenaState* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
             }
             if (b->attach > 0) {
                 const ArenaPlayer* op = &s->players[b->owner];
-                b->pos.x = op->pos.x;
+                /* the hands: +32 Hero along the CURRENT facing (the bomb
+                 * turns with the player, like vanilla's), +50 up; the anchor
+                 * is wall-clamped like the set placement */
+                b->pos.x = op->pos.x + qmul(qsin(op->yaw), TUNE_AIRSET_HAND_FWD);
                 b->pos.y = op->pos.y + TUNE_AIRSET_HAND_Y;
-                b->pos.z = op->pos.z;
+                b->pos.z = op->pos.z - qmul(qcos(op->yaw), TUNE_AIRSET_HAND_FWD);
+                {
+                    q32 bx = wall_x - TUNE_BOMB_RADIUS, bz = wall_z - TUNE_BOMB_RADIUS;
+                    b->pos.x = qclamp(b->pos.x, -bx, bx);
+                    b->pos.z = qclamp(b->pos.z, -bz, bz);
+                }
                 b->attach--;
                 if (b->attach == 0) b->vel.y = 0;   /* release from rest */
             } else {

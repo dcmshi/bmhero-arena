@@ -5,6 +5,7 @@
 #include <string.h>
 #include "../src/arena/arena_sim.h"
 #include "../src/arena/arena_tuning.h"
+#include "../src/arena/arena_geom.h"
 
 static int failures = 0;
 #define CHECK(cond, ...) do { if (!(cond)) { failures++; \
@@ -250,12 +251,14 @@ static void test_set_and_walkin_kick_wall(void) {
     CHECK(bi >= 0, "set places a settled bomb");
     CHECK(s.players[0].live_bombs == 1, "set counts toward the cap");
     if (bi < 0) return;
-    CHECK(bomb_xz_dist(&s.bombs[bi], s.players[0].pos) < Q(0.2),
-          "bomb set at the feet");
+    CHECK(qabs(bomb_xz_dist(&s.bombs[bi], s.players[0].pos) - TUNE_SET_PLACE_OFFSET) <= Q(0.01),
+          "bomb set at the golden offset ahead (dist=%d)",
+          bomb_xz_dist(&s.bombs[bi], s.players[0].pos));
 
-    /* setter standing on it must NOT kick it (grace until stepped clear) */
+    /* setter standing beside their fresh set must NOT kick it (grace until
+     * stepped clear; they are inside the kick touch distance at the offset) */
     run(&s, NEUTRAL, 30);
-    CHECK(s.bombs[bi].state == BSTATE_SETTLED, "no insta-kick while standing on it");
+    CHECK(s.bombs[bi].state == BSTATE_SETTLED, "no insta-kick beside a fresh set");
 
     /* Walk-in kick set up DIRECTLY (explicit position + velocity) instead of the old
      * step-away/run-back arena choreography, which was calibrated to the pre-A1.3
@@ -380,6 +383,62 @@ static void test_set_ignored_while_holding(void) {
           "set is ignored while holding a bomb");
 }
 
+static void test_set_place_offset(void) {
+    /* v21 (user decision 2026-08-04): a grounded set places the bomb 30 Hero
+     * units AHEAD along facing - vanilla parity (golden set_place_offset).
+     * The offset equals the v19 stand gap, so the setter rests exactly AT the
+     * pushout equilibrium: no overlap, no shove. */
+    ArenaState s;
+
+    CHECK((int64_t)TUNE_SET_PLACE_OFFSET * 120 == (int64_t)Q(30.0),
+          "TUNE_SET_PLACE_OFFSET x g_scale(120) == 30 Hero units (golden)");
+
+    /* (a) placement along facing, integer-exact on an axis: yaw 0 faces -Z
+     * (sin=0, cos=1) so the bomb lands exactly at (x, z - OFFSET). */
+    start2(&s);
+    s.players[0].pos.x = 0; s.players[0].pos.y = 0; s.players[0].pos.z = 0;
+    s.players[0].vel.x = s.players[0].vel.y = s.players[0].vel.z = 0;
+    s.players[0].yaw = 0;
+    run(&s, arena_input_pack(0, 0, 0, 0, 1), 1);
+    int bi = -1;
+    for (int i = 0; i < ARENA_MAX_BOMBS; i++)
+        if (s.bombs[i].state == BSTATE_SETTLED) { bi = i; break; }
+    CHECK(bi >= 0, "set places a settled bomb");
+    if (bi < 0) return;
+    CHECK(s.bombs[bi].pos.x == 0
+          && s.bombs[bi].pos.z == -TUNE_SET_PLACE_OFFSET
+          && s.bombs[bi].pos.y == 0,
+          "placed exactly OFFSET ahead along facing (x=%d z=%d)",
+          s.bombs[bi].pos.x, s.bombs[bi].pos.z);
+
+    /* (b) the setter is at the equilibrium: 30 ticks pass, nobody moves -
+     * the pushout must not fire at d == gap and the bomb must not kick. */
+    Vec3q p0 = s.players[0].pos;
+    run(&s, NEUTRAL, 30);
+    CHECK(s.players[0].pos.x == p0.x && s.players[0].pos.z == p0.z,
+          "setter rests unshoved at the offset (x=%d z=%d)",
+          s.players[0].pos.x, s.players[0].pos.z);
+    CHECK(s.bombs[bi].state == BSTATE_SETTLED, "and the bomb stays settled");
+
+    /* (c) wall clamp: setting INTO the wall cannot place the bomb outside
+     * the play bounds - it clamps to wall minus the bomb radius. */
+    start2(&s);
+    q32 half_z = arena_geoms[0]->half_z;
+    s.players[0].pos.x = 0; s.players[0].pos.y = 0;
+    s.players[0].pos.z = -(half_z - TUNE_PLAYER_RADIUS);   /* against -Z wall */
+    s.players[0].vel.x = s.players[0].vel.y = s.players[0].vel.z = 0;
+    s.players[0].yaw = 0;                                  /* facing -Z: into it */
+    run(&s, arena_input_pack(0, 0, 0, 0, 1), 1);
+    bi = -1;
+    for (int i = 0; i < ARENA_MAX_BOMBS; i++)
+        if (s.bombs[i].state == BSTATE_SETTLED) { bi = i; break; }
+    CHECK(bi >= 0, "wall-facing set still places a bomb");
+    if (bi < 0) return;
+    CHECK(s.bombs[bi].pos.z == -(half_z - TUNE_BOMB_RADIUS),
+          "placement clamped to the wall (z=%d want=%d)",
+          s.bombs[bi].pos.z, -(half_z - TUNE_BOMB_RADIUS));
+}
+
 static void test_airset_fall_arc(void) {
     /* v20 (#18): the air-set bomb's fall matched to the vanilla measurement
      * (goldens airset_*): born in the HANDS (+50 Hero above the player root),
@@ -407,26 +466,32 @@ static void test_airset_fall_arc(void) {
     CHECK(bi >= 0, "mid-air set drops a FALLING bomb");
     if (bi < 0) return;
 
-    /* (a) born in the hands and RIDING them: bomb == player + HAND_Y for the
-     * whole attach window (bombs tick after players, so each tick's bomb pos
-     * tracks that same tick's player pos) */
-    CHECK(s.bombs[bi].pos.y == s.players[0].pos.y + TUNE_AIRSET_HAND_Y,
-          "born in the hands, +50 Hero above the root (bomb=%d player=%d)",
-          s.bombs[bi].pos.y, s.players[0].pos.y);
+    /* (a) born in the hands and RIDING them: root + fwd*facing + hand_y for
+     * the whole attach window (bombs tick after players, so each tick's bomb
+     * pos tracks that same tick's player pos; yaw is constant under the
+     * neutral stick, so fwd is too) */
+    q32 fwx =  qmul(qsin(s.players[0].yaw), TUNE_AIRSET_HAND_FWD);
+    q32 fwz = -qmul(qcos(s.players[0].yaw), TUNE_AIRSET_HAND_FWD);
+    CHECK(s.bombs[bi].pos.y == s.players[0].pos.y + TUNE_AIRSET_HAND_Y
+          && s.bombs[bi].pos.x == s.players[0].pos.x + fwx
+          && s.bombs[bi].pos.z == s.players[0].pos.z + fwz,
+          "born in the hands: +50 up, +32 ahead (bomb=%d,%d,%d)",
+          s.bombs[bi].pos.x, s.bombs[bi].pos.y, s.bombs[bi].pos.z);
     /* the set tick consumed the first riding sample, so ATTACH-1 remain -
      * 8 samples at the hand offset in total, the golden's own count */
     for (int t = 0; t < TUNE_AIRSET_ATTACH_TICKS - 1; t++) {
         run(&s, NEUTRAL, 1);
         CHECK(s.bombs[bi].pos.y == s.players[0].pos.y + TUNE_AIRSET_HAND_Y
-              && s.bombs[bi].pos.x == s.players[0].pos.x
-              && s.bombs[bi].pos.z == s.players[0].pos.z,
+              && s.bombs[bi].pos.x == s.players[0].pos.x + fwx
+              && s.bombs[bi].pos.z == s.players[0].pos.z + fwz,
               "attach tick %d: the bomb rides the hands (bomb=%d player=%d)",
               t, s.bombs[bi].pos.y, s.players[0].pos.y);
     }
 
     /* (b) release with vy = 0, then the bomb's own gravity: delta_k = -k*g
-     * exactly in fixed point */
+     * exactly in fixed point; XZ freezes at the release anchor */
     q32 y0 = s.bombs[bi].pos.y;
+    q32 rx = s.bombs[bi].pos.x, rz = s.bombs[bi].pos.z;
     run(&s, NEUTRAL, 1);
     CHECK(s.bombs[bi].pos.y == y0 - TUNE_BOMB_GRAVITY,
           "first fall step is ONE bomb-gravity from vy=0 (dy=%d want=%d)",
@@ -436,6 +501,8 @@ static void test_airset_fall_arc(void) {
     CHECK(s.bombs[bi].pos.y == y1 - 2 * TUNE_BOMB_GRAVITY,
           "second fall step is TWO bomb-gravities (dy=%d want=%d)",
           s.bombs[bi].pos.y - y1, -2 * TUNE_BOMB_GRAVITY);
+    CHECK(s.bombs[bi].pos.x == rx && s.bombs[bi].pos.z == rz,
+          "the fall is straight down from the release anchor");
 
     /* (c) still settles on the floor, never impact-detonates */
     int landed = 0;
@@ -527,21 +594,25 @@ static void test_bomb_stand_pushout(void) {
           "exact overlap ejects along fixed +X (x=%d z=%d)",
           s.players[0].pos.x, s.players[0].pos.z);
 
-    /* (c) setter grace: an at-the-feet set must NOT shove the setter - grace
-     * (bounced = idx+1) owns that window until they step clear, exactly as it
-     * already protects them from the insta-kick. (The arena sets at the feet
-     * where vanilla places the bomb 30u ahead - recorded v1 simplification.) */
+    /* (c) grace exempts the pushout: a player deep INSIDE a bomb that holds
+     * their grace (bounced = idx+1) is not shoved - grace means "these two
+     * coexist until they step clear", exactly as it already protects them
+     * from the insta-kick. Direct setup since v21's set-ahead means a
+     * grounded set no longer produces this state on its own (the owner
+     * walked back into their fresh bomb before grace cleared). */
     start2(&s);
-    run(&s, arena_input_pack(0, 0, 0, 0, 1), 1);
-    run(&s, NEUTRAL, 30);
-    int bi = -1;
-    for (int i = 0; i < ARENA_MAX_BOMBS; i++)
-        if (s.bombs[i].state == BSTATE_SETTLED) { bi = i; break; }
-    CHECK(bi >= 0, "set places a settled bomb");
-    if (bi < 0) return;
-    CHECK(bomb_xz_dist(&s.bombs[bi], s.players[0].pos) < Q(0.2),
-          "setter grace: still standing at their own set (dist=%d)",
-          bomb_xz_dist(&s.bombs[bi], s.players[0].pos));
+    s.bombs[0].state = BSTATE_SETTLED; s.bombs[0].owner = 0;
+    s.bombs[0].fuse = TUNE_FUSE_TICKS; s.bombs[0].bounced = 1;   /* P0 grace */
+    s.bombs[0].pos.x = Q(1.0); s.bombs[0].pos.y = 0; s.bombs[0].pos.z = Q(1.0);
+    s.players[0].live_bombs = 1;
+    s.players[0].pos.x = Q(1.05); s.players[0].pos.y = 0; s.players[0].pos.z = Q(1.0);
+    s.players[0].vel.x = s.players[0].vel.y = s.players[0].vel.z = 0;
+    s.players[0].state = PSTATE_IDLE;
+    run(&s, NEUTRAL, 5);
+    CHECK(s.players[0].pos.x == Q(1.05) && s.players[0].pos.z == Q(1.0),
+          "grace exempts the pushout: not shoved (x=%d z=%d)",
+          s.players[0].pos.x, s.players[0].pos.z);
+    CHECK(s.bombs[0].state == BSTATE_SETTLED, "and no kick either");
 
     /* (d) airborne exemption + landing engagement: a player ABOVE the bomb is
      * untouched (jump-over stays possible); the tick they come down on it,
@@ -621,6 +692,7 @@ int main(void) {
     test_fuse_pops_mid_slide();
     test_set_works_midair();
     test_set_ignored_while_holding();
+    test_set_place_offset();
     test_airset_fall_arc();
     test_bomb_stand_pushout();
     test_no_jump_while_charging();
