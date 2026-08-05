@@ -50,20 +50,20 @@ state→clip chooser triggering the §8.40 anim funnel on change only, on the
 engine's own frame clock — generic-pool anim instances were **measured** to
 self-advance at +2/frame, so no manual frame pump exists or is needed.
 
-**A1 remaining:** every differ catch is FIXED (the register is empty), #24
-(v19 pushout), #18 (v20 fall arc + check 18), v21 set-ahead (user call),
-**the real bomber puppets (§8.40)** and **their per-state clips (§8.41)** are
-all DONE — puppets 1–3 render the actual bomber mesh via a runtime
-self-describing model lookup + the Mirror-Bomber anim bind, and play
-idle/run/jump/carry/hit from their sim state; screenshot- and probe-verified.
-**P2–P4 visual identity is DEFERRED to post-A3:** the tint spike came back
-negative — the per-object light-colour override lands (it recolours scene
-geometry) but the bomber material does not consume SHADE at all (§8.41 has the
-mechanism, both measurements, and the named next candidate). The battle map
-stays the Nitros stand-in until after A3 (user call). Details: the handoff.
+**A1 is COMPLETE (2026-08-05, feel round 13 user-verified):** the differ
+register is empty, v19–v21 shipped, **the real bomber puppets (§8.40)** play
+**per-state clips (§8.41)** from their sim state — screenshot-, probe-, and
+eyeball-verified. Deferred past A3, on purpose: **P2–P4 visual identity**
+(tint spike negative — the light-colour override lands but the bomber
+material has no SHADE term; §8.41 has the mechanism and the named next
+candidate), the battle map (Nitros stand-in, user call), puppet facing
+(yaw placeholder, not flagged in feel), and the missing transition tails
+(not flagged). Do not promote any of these without a new feel report.
 
-**Then A3** — online hardening (ROM-free): rendezvous server + lobby codes,
-host-relay fallback, 4P mesh WAN soak, desync surfacing, player-slot assignment.
+**NOW: A3 — online hardening (ROM-free), the current milestone:** rendezvous
+server + lobby codes, host-relay fallback, 4P mesh WAN soak, desync
+surfacing, player-slot assignment. Starts with a brainstorm/spec pass (no
+code yet) — the handoff's item 1 carries the entry pointers.
 
 ## Hard invariants — breaking any of these breaks netplay
 
