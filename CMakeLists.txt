@@ -72,13 +72,17 @@ add_executable(arena_trace tools/arena_trace.c)
 target_link_libraries(arena_trace arena_sim)
 
 # --- A3 lobby/rendezvous protocol (pure C, no sockets in this lib) ---
-add_library(arena_lobby STATIC src/lobby/lobby_proto.c)
+add_library(arena_lobby STATIC src/lobby/lobby_proto.c src/lobby/rendezvous.c)
 target_include_directories(arena_lobby PUBLIC src src/lobby)
 target_link_libraries(arena_lobby PUBLIC arena_sim)   # net_version replays the scripted match
 
 add_executable(test_lobby_proto tests/test_lobby_proto.c)
 target_link_libraries(test_lobby_proto arena_lobby)
 add_test(NAME lobby_proto COMMAND test_lobby_proto)
+
+add_executable(test_rendezvous tests/test_rendezvous.c)
+target_link_libraries(test_rendezvous arena_lobby)
+add_test(NAME rendezvous COMMAND test_rendezvous)
 
 # --- netplay: GekkoNet (BSD-2, C API, C++ internals) via FetchContent ---
 include(FetchContent)
