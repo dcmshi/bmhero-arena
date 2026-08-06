@@ -66,4 +66,21 @@ typedef struct {
 } SyncStats;
 void              sync_stats(const SyncSession* s, SyncStats* out);
 
+/* --- desync surfacing (A3) ---
+ * What the detector reported: the frame GekkoNet compared, the two checksums,
+ * and which slot the disagreeing peer is (-1 if the handle mapped to nobody).
+ * The FIRST desync is kept; later ones are consequences of it. */
+typedef struct { uint32_t tick, local_hash, remote_hash; int remote_slot; } SyncDesyncInfo;
+bool              sync_desync_info(const SyncSession* s, SyncDesyncInfo* out);
+/* Write a desync bundle (src/netplay/desync_bundle.h) for tools/replay_bundle:
+ * match parameters, confirmed inputs, this peer's hash ring, current state.
+ * 0 = written. Callable any time, not only after a desync. */
+int               sync_dump_bundle(const SyncSession* s, const char* path);
+/* TEST HOOK: the next FRESH advance XORs state.rng with 1 after arena_tick — a
+ * deterministic, one-tick divergence that falsifies the whole desync pipeline
+ * (detector -> bundle -> offline localisation). Fresh only, never inside a
+ * rollback re-sim: a re-simmed tick gets overwritten by the next rollback, which
+ * would make the divergence tick nondeterministic. */
+void              sync_debug_corrupt(SyncSession* s);
+
 #endif

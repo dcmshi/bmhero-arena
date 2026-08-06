@@ -34,6 +34,8 @@ int main(int argc, char** argv) {
     const char* server_s = NULL; const char* join_code = NULL;
     int host_players = 0, ticks = 600, forced_relay = 0;
     const char* impair = NULL;
+    int inject = -1;                        /* corrupt at present tick >= N */
+    const char* bundle_dir = ".";
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--server") && i + 1 < argc) server_s = argv[++i];
         else if (!strcmp(argv[i], "--host") && i + 1 < argc) host_players = atoi(argv[++i]);
@@ -41,9 +43,12 @@ int main(int argc, char** argv) {
         else if (!strcmp(argv[i], "--ticks") && i + 1 < argc) ticks = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--forced-relay")) forced_relay = 1;
         else if (!strcmp(argv[i], "--impair") && i + 1 < argc) impair = argv[++i];
+        else if (!strcmp(argv[i], "--inject") && i + 1 < argc) inject = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--bundle-dir") && i + 1 < argc) bundle_dir = argv[++i];
     }
     if ((!host_players && !join_code) || (host_players && !server_s)) {
-        fprintf(stderr, "usage: --server ip:port --host N | --join CODE [--ticks N] [--forced-relay] [--impair lan0|wan100|rough200]\n");
+        fprintf(stderr, "usage: --server ip:port --host N | --join CODE [--ticks N] [--forced-relay]\n"
+                        "       [--impair lan0|wan100|rough200] [--inject TICK] [--bundle-dir DIR]\n");
         return 2;
     }
 
@@ -120,9 +125,20 @@ int main(int argc, char** argv) {
         int bomb = (int)((t + (uint32_t)(me * 37)) % 150) < 40;
         in[me] = arena_input_pack(sx, 10, (t % 120) == (uint32_t)me, bomb,
                                   (t % 137) == 0);
+        if (inject >= 0 && (int)t >= inject) { sync_debug_corrupt(s); inject = -1; }
         sync_frame(s, in);
         lobby_post_poll(&lc, udp_now_ms());
-        if (sync_desynced(s)) { printf("FAIL: desync\n"); return 3; }
+        if (sync_desynced(s)) {
+            SyncDesyncInfo di;
+            if (sync_desync_info(s, &di))
+                printf("desync tick=%u local=%08x remote=%08x\n",
+                       di.tick, di.local_hash, di.remote_hash);
+            char path[512];
+            snprintf(path, sizeof path, "%s/desync_slot%d.bin", bundle_dir, me);
+            if (sync_dump_bundle(s, path) == 0) printf("bundle %s\n", path);
+            fflush(stdout);
+            return 3;
+        }
         sleep_ms(2);
     }
     uint32_t h = sync_hash_at(s, target);

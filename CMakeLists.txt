@@ -71,6 +71,12 @@ target_link_libraries(arena_hash arena_sim)
 add_executable(arena_trace tools/arena_trace.c)
 target_link_libraries(arena_trace arena_sim)
 
+# Offline desync localization: replay a bundle's confirmed inputs and find where
+# the live session stopped agreeing with them. Sim only - no sockets, no GekkoNet.
+add_executable(replay_bundle tools/replay_bundle.c)
+target_link_libraries(replay_bundle arena_sim)
+target_include_directories(replay_bundle PRIVATE src)
+
 # --- A3 lobby/rendezvous protocol (pure C, no sockets in this lib) ---
 add_library(arena_lobby STATIC src/lobby/lobby_proto.c src/lobby/rendezvous.c)
 target_include_directories(arena_lobby PUBLIC src src/lobby)
@@ -162,6 +168,16 @@ if(BASH_PROGRAM)
            COMMAND ${BASH_PROGRAM} ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_mesh_test.sh
                    $<TARGET_FILE:test_netplay_mesh> $<TARGET_FILE:arena_rendezvous> impair)
   set_tests_properties(netplay_mesh_impaired PROPERTIES TIMEOUT 300)
+
+  # Falsifiability for the desync pipeline: joiner 1 corrupts its own sim at tick
+  # 300 on purpose. The detector must fire, the bundles must land, and
+  # replay_bundle must name the corrupted tick and the culprit peer. Without this
+  # the whole desync path is a gate that has never failed.
+  add_test(NAME netplay_desync_inject
+           COMMAND ${BASH_PROGRAM} ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_mesh_test.sh
+                   $<TARGET_FILE:test_netplay_mesh> $<TARGET_FILE:arena_rendezvous> inject
+                   $<TARGET_FILE:replay_bundle>)
+  set_tests_properties(netplay_desync_inject PROPERTIES TIMEOUT 180)
 else()
   message(STATUS "bash not found - netplay_p2p/netplay_mesh tests skipped")
 endif()
