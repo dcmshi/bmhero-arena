@@ -201,9 +201,15 @@ paragraph is that slice's requirements pointer — nothing in A3 implements it.
   loss, 1% reorder — a delivered packet swaps with its successor),
   `rough200` (200ms ± 50ms, 3% loss — informational only).
 - **Numeric exit criteria at `wan100`:** p95 prediction depth ≤ 8 (the
-  window), stalls < 1/min (a stall = a pumped frame where the session
-  cannot advance because the prediction window is exhausted), desyncs = 0,
-  all-direct and forced-relay variants both green.
+  window — a regression guard on it, not a drifting signal), stalls < 5% of
+  pumps (a stall = a pumped frame where the session cannot advance because
+  the prediction window is exhausted), desyncs = 0, all-direct and
+  forced-relay variants both green. *(Amended from "stalls < 1/min",
+  user-ratified 2026-08-06: measurement showed stalls are a fixed
+  post-handshake transient — ~26-40 per match regardless of length — so a
+  per-minute rate fails forever on short matches and is gamed by long ones;
+  the pump fraction scales correctly. Measured reference: lan0 0%, wan100
+  0.2-0.3%. stalls/min still printed as information.)*
 - **Falsifiability:** `ARENA_DESYNC_INJECT=<tick>` corrupts one peer's state
   on purpose — must fire the detector, write bundles on all peers, and
   `replay_bundle` must localize the injected tick. Run once per CI netplay
