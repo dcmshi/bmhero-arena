@@ -395,7 +395,21 @@ LobbyClientStage lobby_poll(LobbyClient* lc, uint32_t now_ms) {
         break;
 
     case LOBBY_C_WAITING_PEERS:
-        if (all_peers_present(lc)) enter_punching(lc, now_ms);
+        if (all_peers_present(lc)) { enter_punching(lc, now_ms); break; }
+        /* Keep asking. PEER_INTRO is a one-shot server push and nothing else
+         * ever resends it, so a single lost intro would strand us here waiting
+         * for a peer that will never be introduced again — but the server's
+         * idempotent-retry path replays the intros of every other member to
+         * whoever repeats their request. So the request IS the retransmit.
+         *
+         * Deliberately not counted against LOBBY_RETRY_MAX: this stage is a wait
+         * for other humans to press a button, which legitimately outlasts ten
+         * retries. The 30s bootstrap deadline is what bounds it. */
+        if (now_ms - lc->last_send_ms >= LOBBY_RETRY_MS) {
+            lc->last_send_ms = now_ms;
+            if (lc->is_host) send_host_req(lc);
+            else             send_join_req(lc);
+        }
         break;
 
     case LOBBY_C_PUNCHING:

@@ -98,6 +98,35 @@ static void fan_peer_intro(RvSession* s, int newcomer, RvEmit emit, void* ctx) {
     }
 }
 
+/* Re-deliver, to ONE peer, an introduction for every other member.
+ *
+ * Every intro is a single unacknowledged push. Lose one and the client waits in
+ * WAITING_PEERS for a peer that will never be introduced again, then dies on its
+ * 30s bootstrap deadline — a player-facing failure with no diagnosis. A 4-player
+ * lobby fires ~12 of these pushes, so at 1% WAN loss it is not a rare case.
+ *
+ * The recovery is the retry path the client already has: a repeated HOST_REQ or
+ * JOIN_REQ from an endpoint that is already registered replays the intros to
+ * THAT endpoint and no other. Aiming the replay only at the retryer is what
+ * stops a retry storm from becoming a fan-out storm at everyone else's expense.
+ *
+ * On amplification: this makes the response to a padded 32-byte request as large
+ * as ~65 bytes, so a request forged from a member's address reflects roughly 2x
+ * at that member. The bound that matters is the rate limiter, which is keyed on
+ * the source ip a spoofer must claim — the victim's own bucket, 20/s. */
+static void resend_intros_to(RvSession* s, int who, RvEmit emit, void* ctx) {
+    LobbyMsg m;
+    for (int i = 0; i < RV_MAX_PLAYERS; i++) {
+        if (i == who || !s->peers[i].used) continue;
+        memset(&m, 0, sizeof m);
+        m.type = LOBBY_PEER_INTRO;
+        m.u.peer_intro.slot       = (uint8_t)i;
+        m.u.peer_intro.public_ep  = s->peers[i].public_ep;
+        m.u.peer_intro.private_ep = s->peers[i].private_ep;
+        emit_msg(emit, ctx, s->peers[who].public_ep, &m);
+    }
+}
+
 static void fan_start(RvSession* s, int only_unacked, RvEmit emit, void* ctx) {
     if (!s->have_start) return;
     for (int i = 0; i < RV_MAX_PLAYERS; i++) {
@@ -123,6 +152,7 @@ static void do_host_req(Rendezvous* rv, uint32_t now, LobbyEndpoint from,
         c->peers[0].last_seen_ms = now;
         m.type = LOBBY_HOST_RESP; m.u.host_resp.session_id = c->id;
         emit_msg(emit, ctx, from, &m);
+        resend_intros_to(c, 0, emit, ctx);   /* the retry re-delivers lost intros */
         return;
     }
 
@@ -174,6 +204,7 @@ static void do_join_req(Rendezvous* rv, uint32_t now, LobbyEndpoint from,
         m.u.join_resp.slot        = (uint8_t)existing;
         m.u.join_resp.num_players = s->num_players;
         emit_msg(emit, ctx, from, &m);
+        resend_intros_to(s, existing, emit, ctx);   /* same for a joiner's retry */
         return;
     }
     /* version before capacity: a mismatched build should learn WHY it cannot
@@ -220,7 +251,23 @@ static void do_punch_report(Rendezvous* rv, uint32_t now, LobbyEndpoint from,
     int a = (sa < sb) ? (int)sa : (int)sb;          /* canonical pair order */
     int b = (sa < sb) ? (int)sb : (int)sa;
     if (s->punch[a][b] < 0 || s->punch[b][a] < 0) return;   /* still one-sided */
-    if (s->route_sent[a][b]) return;                        /* already decided */
+
+    LobbyMsg m; memset(&m, 0, sizeof m);
+    if (s->route_sent[a][b]) {
+        /* Already decided, and this side is asking again — which is exactly what
+         * a client does when the PAIR_ROUTE it was owed never arrived. Replay the
+         * verdict to the REPORTER only: re-fanning to everyone would let one
+         * lossy client multiply its retries across the whole lobby. Verdicts are
+         * immutable once set, so the answer is always the same one. PAIR_ROUTE is
+         * smaller than the PUNCH_REPORT that triggered it, so this is not an
+         * amplifier. */
+        m.type = LOBBY_PAIR_ROUTE;
+        m.u.pair_route.slot_a = (uint8_t)a;
+        m.u.pair_route.slot_b = (uint8_t)b;
+        m.u.pair_route.route  = s->route[a][b];
+        emit_msg(emit, ctx, from, &m);
+        return;
+    }
 
     /* Direct only if BOTH directions saw the hole open. One-way success is a
      * trap: it looks connected until the first packet has to go the other way. */
@@ -233,7 +280,6 @@ static void do_punch_report(Rendezvous* rv, uint32_t now, LobbyEndpoint from,
      * before the peers had a chance to use the route we just gave them */
     if (route == LOBBY_ROUTE_RELAY) s->last_relay_ms = now;
 
-    LobbyMsg m; memset(&m, 0, sizeof m);
     m.type = LOBBY_PAIR_ROUTE;
     m.u.pair_route.slot_a = (uint8_t)a;
     m.u.pair_route.slot_b = (uint8_t)b;

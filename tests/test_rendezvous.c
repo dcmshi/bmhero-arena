@@ -223,10 +223,19 @@ static void lobby_size_is_the_hosts(void) {
     CHECK(find_sent(LOBBY_JOIN_RESP, G, &r) >= 0 && r.u.join_resp.num_players == 2);
 }
 
+/* which peer slots appear in the intros captured for `to` */
+static void intro_slots_to(LobbyEndpoint to, int seen[RV_MAX_PLAYERS]) {
+    LobbyMsg q; int i = -1;
+    for (int k = 0; k < RV_MAX_PLAYERS; k++) seen[k] = 0;
+    while ((i = find_from(i + 1, LOBBY_PEER_INTRO, to, &q)) >= 0)
+        if (q.u.peer_intro.slot < RV_MAX_PLAYERS) seen[q.u.peer_intro.slot] = 1;
+}
+
 /* ---------- 2. retries are idempotent ---------- */
 static void host_retry_idempotent(void) {
     Rendezvous rv; rv_init(&rv, 1000, 42);
-    LobbyEndpoint A = ep(0x0A0A0A0A, 2001), B = ep(0x0B0B0B0B, 2002);
+    LobbyEndpoint A = ep(0x0A0A0A0A, 2001), B = ep(0x0B0B0B0B, 2002),
+                  C = ep(0x0C0C0C0C, 2003);
     LobbyMsg r1, r2; memset(&r1, 0, sizeof r1); memset(&r2, 0, sizeof r2);
 
     reset();
@@ -252,12 +261,47 @@ static void host_retry_idempotent(void) {
     CHECK(find_sent(LOBBY_JOIN_RESP, B, &r2) >= 0);
     CHECK(r2.u.join_resp.slot == 1);                /* same slot re-sent */
     CHECK(rv_active_sessions(&rv) == 1);
+    /* PEER_INTRO is a one-shot push and nothing else ever resends it, so the
+     * retry must REPLAY the intros the retryer may have lost — every other
+     * joined peer, to the retryer and to nobody else. */
+    CHECK(count_sent(LOBBY_PEER_INTRO, B) == 1);    /* slot 0 = the host */
+    CHECK(find_sent(LOBBY_PEER_INTRO, B, &r2) >= 0);
+    CHECK(r2.u.peer_intro.slot == 0 && ep_eq(r2.u.peer_intro.public_ep, A));
+    CHECK(count_sent(LOBBY_PEER_INTRO, A) == 0);    /* no fan-out to anyone else */
 
     /* a third endpoint still lands on slot 2, proving `joined` never grew */
     reset();
-    join_req(&rv, 1400, ep(0x0C0C0C0C, 2003), sid, 0x1111);
-    CHECK(find_sent(LOBBY_JOIN_RESP, ep(0x0C0C0C0C, 2003), &r2) >= 0);
+    join_req(&rv, 1400, C, sid, 0x1111);
+    CHECK(find_sent(LOBBY_JOIN_RESP, C, &r2) >= 0);
     CHECK(r2.u.join_resp.slot == 2);
+
+    /* with three members, B's retry replays TWO intros — 0 and 2, never itself */
+    reset();
+    join_req(&rv, 1500, B, sid, 0x1111);
+    CHECK(count_sent(LOBBY_PEER_INTRO, B) == 2);
+    {
+        int seen[RV_MAX_PLAYERS];
+        intro_slots_to(B, seen);
+        CHECK(seen[0] && !seen[1] && seen[2] && !seen[3]);
+    }
+    CHECK(count_sent(LOBBY_PEER_INTRO, A) == 0);
+    CHECK(count_sent(LOBBY_PEER_INTRO, C) == 0);
+
+    /* and the HOST's own retry replays the joiners' intros the same way: the
+     * host loses intros exactly as easily as a joiner does */
+    reset();
+    host_req(&rv, 1600, A, 0x1111, 4);
+    CHECK(find_sent(LOBBY_HOST_RESP, A, &r2) >= 0);
+    CHECK(r2.u.host_resp.session_id == sid);
+    CHECK(count_sent(LOBBY_PEER_INTRO, A) == 2);
+    {
+        int seen[RV_MAX_PLAYERS];
+        intro_slots_to(A, seen);
+        CHECK(!seen[0] && seen[1] && seen[2] && !seen[3]);
+    }
+    CHECK(count_sent(LOBBY_PEER_INTRO, B) == 0);
+    CHECK(count_sent(LOBBY_PEER_INTRO, C) == 0);
+    CHECK(rv_active_sessions(&rv) == 1);
 }
 
 /* ---------- 3. punch reports -> pair routes ---------- */
@@ -283,11 +327,31 @@ static void routes(void) {
         CHECK(r.u.pair_route.slot_a == 0 && r.u.pair_route.slot_b == 1);
         CHECK(r.u.pair_route.route == LOBBY_ROUTE_DIRECT);
 
-        /* duplicate reports do not re-emit */
+        /* A duplicate report on an ALREADY-DECIDED pair replays the verdict to
+         * the reporter ONLY. That is the recovery path for a PAIR_ROUTE that was
+         * lost — without it the client re-reports forever and dies on its 30s
+         * deadline. It must not re-fan to the other peer, or one lossy client
+         * would multiply its retries across the whole lobby. */
+        reset();
         punch_report(&rv, 1040, A, sid, 0, 1, 1);
+        CHECK(count_sent(LOBBY_PAIR_ROUTE, A) == 1);   /* re-delivered to A */
+        CHECK(count_sent(LOBBY_PAIR_ROUTE, B) == 0);   /* B is told nothing new */
+        CHECK(find_sent(LOBBY_PAIR_ROUTE, A, &r) >= 0);
+        CHECK(r.u.pair_route.slot_a == 0 && r.u.pair_route.slot_b == 1);
+        CHECK(r.u.pair_route.route == LOBBY_ROUTE_DIRECT);   /* the same verdict */
+
+        reset();                                       /* symmetric for B */
         punch_report(&rv, 1050, B, sid, 0, 1, 1);
-        CHECK(count_sent(LOBBY_PAIR_ROUTE, A) == 1);
         CHECK(count_sent(LOBBY_PAIR_ROUTE, B) == 1);
+        CHECK(count_sent(LOBBY_PAIR_ROUTE, A) == 0);
+
+        /* the verdict is immutable: a duplicate claiming the OPPOSITE result
+         * replays DIRECT rather than re-arbitrating the pair mid-match */
+        reset();
+        punch_report(&rv, 1060, A, sid, 0, 1, 0);
+        CHECK(find_sent(LOBBY_PAIR_ROUTE, A, &r) >= 0);
+        CHECK(r.u.pair_route.route == LOBBY_ROUTE_DIRECT);
+        CHECK(count_sent(LOBBY_PAIR_ROUTE, B) == 0);
     }
 
     /* one side failed -> RELAY */
