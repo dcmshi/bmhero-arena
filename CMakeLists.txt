@@ -106,14 +106,18 @@ FetchContent_Declare(gekkonet
   SOURCE_SUBDIR  GekkoLib)          # library only; skips SDL3 examples
 FetchContent_MakeAvailable(gekkonet)
 
-add_library(arena_netplay STATIC src/netplay/sync_session.c)
+add_library(arena_netplay STATIC src/netplay/sync_session.c src/netplay/net_adapter.c)
 target_include_directories(arena_netplay PUBLIC
   src src/netplay ${gekkonet_SOURCE_DIR}/GekkoLib/include)
 target_compile_definitions(arena_netplay PUBLIC GEKKONET_STATIC)
-target_link_libraries(arena_netplay PUBLIC arena_sim GekkoNet)
+target_link_libraries(arena_netplay PUBLIC arena_sim arena_lobby arena_udp GekkoNet)
 if(WIN32)
   target_link_libraries(arena_netplay PUBLIC ws2_32)
 endif()
+
+add_executable(test_net_adapter tests/test_net_adapter.c)
+target_link_libraries(test_net_adapter arena_netplay)
+add_test(NAME net_adapter COMMAND test_net_adapter)
 
 add_executable(test_netplay_link tests/test_netplay_link.c)
 target_link_libraries(test_netplay_link arena_netplay)
