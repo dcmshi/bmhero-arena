@@ -84,6 +84,20 @@ add_executable(test_rendezvous tests/test_rendezvous.c)
 target_link_libraries(test_rendezvous arena_lobby)
 add_test(NAME rendezvous COMMAND test_rendezvous)
 
+# --- A3 sockets + rendezvous binary ---
+add_library(arena_udp STATIC src/netplay/udp_socket.c)
+target_include_directories(arena_udp PUBLIC src src/netplay src/lobby)
+if(WIN32)
+  target_link_libraries(arena_udp PUBLIC ws2_32)
+endif()
+
+add_executable(test_udp_socket tests/test_udp_socket.c)
+target_link_libraries(test_udp_socket arena_udp)
+add_test(NAME udp_socket COMMAND test_udp_socket)
+
+add_executable(arena_rendezvous src/lobby/rendezvous_main.c)
+target_link_libraries(arena_rendezvous arena_lobby arena_udp)
+
 # --- netplay: GekkoNet (BSD-2, C API, C++ internals) via FetchContent ---
 include(FetchContent)
 FetchContent_Declare(gekkonet
