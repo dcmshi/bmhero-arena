@@ -106,7 +106,8 @@ FetchContent_Declare(gekkonet
   SOURCE_SUBDIR  GekkoLib)          # library only; skips SDL3 examples
 FetchContent_MakeAvailable(gekkonet)
 
-add_library(arena_netplay STATIC src/netplay/sync_session.c src/netplay/net_adapter.c)
+add_library(arena_netplay STATIC src/netplay/sync_session.c src/netplay/net_adapter.c
+                                src/netplay/lobby_client.c)
 target_include_directories(arena_netplay PUBLIC
   src src/netplay ${gekkonet_SOURCE_DIR}/GekkoLib/include)
 target_compile_definitions(arena_netplay PUBLIC GEKKONET_STATIC)
@@ -129,14 +130,24 @@ add_test(NAME netplay_stress COMMAND test_netplay_stress)
 
 add_executable(test_netplay_p2p tests/test_netplay_p2p.c)
 target_link_libraries(test_netplay_p2p arena_netplay)
+
+add_executable(test_netplay_mesh tests/test_netplay_mesh.c)
+target_link_libraries(test_netplay_mesh arena_netplay)
+
 find_program(BASH_PROGRAM bash)
 if(BASH_PROGRAM)
   add_test(NAME netplay_p2p
            COMMAND ${BASH_PROGRAM} ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_p2p_test.sh
                    $<TARGET_FILE:test_netplay_p2p>)
   set_tests_properties(netplay_p2p PROPERTIES TIMEOUT 120)
+
+  # The milestone gate: four processes, a real rendezvous, real punching.
+  add_test(NAME netplay_mesh_direct
+           COMMAND ${BASH_PROGRAM} ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_mesh_test.sh
+                   $<TARGET_FILE:test_netplay_mesh> $<TARGET_FILE:arena_rendezvous> direct)
+  set_tests_properties(netplay_mesh_direct PROPERTIES TIMEOUT 180)
 else()
-  message(STATUS "bash not found - netplay_p2p test skipped")
+  message(STATUS "bash not found - netplay_p2p/netplay_mesh tests skipped")
 endif()
 
 # --- viewer pure-logic modules (no SDL; always built and tested) ---

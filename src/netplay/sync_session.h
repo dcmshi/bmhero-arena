@@ -14,15 +14,24 @@
 typedef struct SyncSession SyncSession;
 typedef enum { SYNC_COUCH, SYNC_ONLINE, SYNC_STRESS } SyncMode;
 
+/* Forward declaration rather than including gekkonet.h: this header is included
+ * by sim-side and tool-side code that has no business seeing the GekkoNet API.
+ * C11 6.7p3 permits a repeated compatible typedef, so a translation unit that
+ * includes both this and gekkonet.h is fine. */
+typedef struct GekkoNetAdapter GekkoNetAdapter;
+
 typedef struct {
     SyncMode    mode;
     uint8_t     num_players;                  /* 2..4 */
     uint8_t     local_mask;                   /* bit i = player i is local */
-    uint16_t    local_port;                   /* ONLINE: our UDP port */
-    const char* peer_addr[ARENA_MAX_PLAYERS]; /* ONLINE: "ip:port" per remote */
+    uint16_t    local_port;                   /* ONLINE + default adapter: our UDP port */
+    const char* peer_addr[ARENA_MAX_PLAYERS]; /* ONLINE + default adapter: "ip:port" per remote */
     uint32_t    seed;
     uint8_t     arena_id;
     uint8_t     input_delay;                  /* frames, 0-2 typical */
+    GekkoNetAdapter* adapter;                 /* ONLINE: non-NULL = custom adapter (A3);
+                                                 remote actor addresses become 1-byte
+                                                 slot indices; peer_addr/local_port unused */
 } SyncConfig;
 
 SyncSession*      sync_create(const SyncConfig* cfg);   /* NULL on failure */

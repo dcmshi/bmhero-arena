@@ -16,6 +16,10 @@ struct SyncSession {
     bool          connected;
     bool          desynced;
     int           handle[ARENA_MAX_PLAYERS];
+    /* Custom-adapter actor addresses. GekkoNet compares addresses as opaque
+     * byte blobs (size + bytes), so one byte per slot is a legal address — and
+     * it must be storage the SESSION owns, since gekko keeps the pointer. */
+    uint8_t       slot_addr[ARENA_MAX_PLAYERS];
     TickHash      ring[256];
 };
 
@@ -47,8 +51,12 @@ SyncSession* sync_create(const SyncConfig* cfg) {
     gekko_start(s->gk, &gc);
 
     if (cfg->mode == SYNC_ONLINE) {
-        gekko_net_adapter_set(s->gk, gekko_default_adapter(cfg->local_port));
-        s->online_adapter = true;
+        if (cfg->adapter) {
+            gekko_net_adapter_set(s->gk, cfg->adapter);   /* caller owns lifetime */
+        } else {
+            gekko_net_adapter_set(s->gk, gekko_default_adapter(cfg->local_port));
+            s->online_adapter = true;
+        }
     }
 
     for (int i = 0; i < cfg->num_players; i++) {
@@ -57,8 +65,14 @@ SyncSession* sync_create(const SyncConfig* cfg) {
             gekko_set_local_delay(s->gk, s->handle[i], cfg->input_delay);
         } else {
             GekkoNetAddress a;
-            a.data = (void*)cfg->peer_addr[i];
-            a.size = (unsigned int)strlen(cfg->peer_addr[i]);
+            if (cfg->adapter) {
+                s->slot_addr[i] = (uint8_t)i;
+                a.data = &s->slot_addr[i];
+                a.size = 1;
+            } else {
+                a.data = (void*)cfg->peer_addr[i];
+                a.size = (unsigned int)strlen(cfg->peer_addr[i]);
+            }
             s->handle[i] = gekko_add_actor(s->gk, GekkoRemotePlayer, &a);
         }
     }
