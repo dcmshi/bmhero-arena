@@ -13,7 +13,7 @@ useful commands, and the one-time setup already done.
 
 | doc | what it's for |
 |---|---|
-| `docs/HANDOFF-2026-08-05.md` | **current open items, traps, commands** — read on resume |
+| `docs/HANDOFF-2026-08-06.md` | **current open items, traps, commands** — read on resume |
 | `docs/bmhero-recomp-integration-notes.md` | living RE reference for the fork-side render bridge (patches/exports, per-frame hooks, object & player structs, input, camera, coord mapping). Read before any A1.2+ work. **§8.x is the authority when anything else disagrees.** |
 | `docs/bmhero-battle-arena-design.md` | the mode being built: ruleset, ArenaState spec, tick pipeline, GekkoNet plan, render bridge, host-session model |
 | `docs/bmhero-multiplayer-architecture.md` | overall design: two sim domains, determinism model, netcode topology, milestones |
@@ -23,16 +23,16 @@ useful commands, and the one-time setup already done.
 | `docs/PROJECT-LOG.md` | milestone history (what was done when, and why). Archive — not current state |
 | `README.md` | this repo's layout, build, and the five invariants |
 
-## Where things stand (verified 2026-08-05)
+## Where things stand (verified 2026-08-06)
 
 **Sim:** `TUNE_VERSION` **21**, pinned hash **`fbdb0d08`** (v21: set-ahead —
 grounded sets place 30u ahead like vanilla, user decision 2026-08-04; v20:
 air-set fall arc — hands birth, 8-sample attach, bomb gravity 2.0; v19:
-player↔settled-bomb pushout to the 30u stand gap). **The sim was not touched on
-2026-08-05** — that session was entirely fork-side (puppet clips, §8.41).
-Canonical `main` and fork `master` both
-**pushed**, gate-green, SOAK GREEN. Per-slice feature branches are retired —
-**work from `master`** on the fork.
+player↔settled-bomb pushout to the 30u stand gap). **The sim was not touched
+by A3 either** — the one new file under `src/arena/` is `arena_script.h`
+(header-only extraction, gate-proven behavior-neutral). Canonical `main` and
+fork `master` both **pushed**, gate-green, SOAK GREEN. Per-slice feature
+branches are retired — **work from `master`** on the fork.
 
 **Done:** A0 (headless deterministic sim), A2 (GekkoNet SyncSession), the SDL
 debug viewer, the tuning-loop toolkit, A1.0 → **A1.5**, feel rounds 4–13
@@ -60,10 +60,18 @@ candidate), the battle map (Nitros stand-in, user call), puppet facing
 (yaw placeholder, not flagged in feel), and the missing transition tails
 (not flagged). Do not promote any of these without a new feel report.
 
-**NOW: A3 — online hardening (ROM-free), the current milestone:** rendezvous
-server + lobby codes, host-relay fallback, 4P mesh WAN soak, desync
-surfacing, player-slot assignment. Starts with a brainstorm/spec pass (no
-code yet) — the handoff's item 1 carries the entry pointers.
+**A3 — online hardening (ROM-free): IMPLEMENTED (2026-08-06), close-out
+pending.** All nine plan tasks shipped on canonical `main` (spec:
+`docs/superpowers/specs/2026-08-05-a3-online-hardening-design.md`):
+rendezvous+relay binary, lobby codes, custom one-socket GekkoNet adapter,
+lobby client, 4P mesh green in four ctest variants (direct / forced-relay /
+impaired-wan100 / desync-inject), `tools/net-soak.ps1` SOAK GREEN at its
+numeric exit criteria, desync bundles + `replay_bundle` localization, viewer
+`--host`/`--join CODE`. **NOW: the close-out** — deploy `arena_rendezvous`
+somewhere reachable and run the human real-WAN checkpoint (handoff item 1),
+and watch the first CI run (it compiles the POSIX socket branches for the
+first time). After that: the fork slice (local = `local_slot`, puppets =
+other slots — spec §G carries the contract).
 
 ## Hard invariants — breaking any of these breaks netplay
 
