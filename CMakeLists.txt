@@ -146,6 +146,14 @@ if(BASH_PROGRAM)
            COMMAND ${BASH_PROGRAM} ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_mesh_test.sh
                    $<TARGET_FILE:test_netplay_mesh> $<TARGET_FILE:arena_rendezvous> direct)
   set_tests_properties(netplay_mesh_direct PROPERTIES TIMEOUT 180)
+
+  # Same mesh, every pair forced onto the relay: proves the server's forwarding
+  # path carries a whole rollback match, and that the direct test above is
+  # falsifiable (its rv.txt must NOT contain 'relay active').
+  add_test(NAME netplay_mesh_relay
+           COMMAND ${BASH_PROGRAM} ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_mesh_test.sh
+                   $<TARGET_FILE:test_netplay_mesh> $<TARGET_FILE:arena_rendezvous> relay)
+  set_tests_properties(netplay_mesh_relay PROPERTIES TIMEOUT 180)
 else()
   message(STATUS "bash not found - netplay_p2p/netplay_mesh tests skipped")
 endif()

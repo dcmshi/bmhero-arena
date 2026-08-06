@@ -32,6 +32,7 @@ int main(int argc, char** argv) {
     LobbyEndpoint from;
     uint32_t last_tick = boot;
     int last_sessions = 0;
+    int relay_logged = 0;
     for (;;) {
         int n = udp_recv(&g_sock, &from, buf, sizeof buf);
         uint32_t now = udp_now_ms();
@@ -45,6 +46,16 @@ int main(int argc, char** argv) {
             printf("arena_rendezvous: sessions=%d\n", cur);
             fflush(stdout);
             last_sessions = cur;
+        }
+
+        /* Latched, once: the difference between a mesh that punched through and
+         * one that quietly fell back to relay is invisible from the outside
+         * otherwise, and both look like a passing test. Printed once because a
+         * relayed match forwards thousands of packets a second. */
+        if (!relay_logged && rv_relay_forwards(&rv) > 0) {
+            printf("relay active\n");
+            fflush(stdout);
+            relay_logged = 1;
         }
         if (n <= 0) udp_sleep_ms(1);
     }

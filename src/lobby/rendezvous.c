@@ -314,6 +314,7 @@ static void do_relay(Rendezvous* rv, uint32_t now, LobbyEndpoint from,
     s->last_activity_ms = now;
     s->last_relay_ms    = now;
     s->peers[fs].last_seen_ms = now;
+    rv->relay_forwards++;
     emit(ctx, s->peers[ts].public_ep, buf, len);    /* verbatim: never re-packed */
 }
 
@@ -385,6 +386,8 @@ void rv_tick(Rendezvous* rv, uint32_t now_ms, RvEmit emit, void* ctx) {
         }
     }
 }
+
+uint32_t rv_relay_forwards(const Rendezvous* rv) { return rv ? rv->relay_forwards : 0u; }
 
 int rv_active_sessions(const Rendezvous* rv) {
     if (!rv) return 0;

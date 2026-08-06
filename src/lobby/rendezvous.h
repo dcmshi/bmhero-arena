@@ -49,6 +49,12 @@ typedef struct {
     RvSession    sessions[RV_MAX_SESSIONS];
     RvRateBucket rate[RV_RATE_BUCKETS];
     uint32_t     rng;
+    /* Every packet this server has forwarded on a RELAY route, since boot. The
+     * core is printf-free, so this counter is the ONLY way an observer outside
+     * it can tell relayed traffic from direct traffic — which is what makes
+     * "the punch worked" and "the punch silently fell back to relay"
+     * distinguishable instead of both looking like a green test. */
+    uint32_t     relay_forwards;
 } Rendezvous;
 
 void rv_init(Rendezvous* rv, uint32_t now_ms, uint32_t rng_seed);
@@ -56,5 +62,6 @@ void rv_handle(Rendezvous* rv, uint32_t now_ms, LobbyEndpoint from,
                const uint8_t* buf, size_t len, RvEmit emit, void* ctx);
 void rv_tick(Rendezvous* rv, uint32_t now_ms, RvEmit emit, void* ctx);
 int  rv_active_sessions(const Rendezvous* rv);
+uint32_t rv_relay_forwards(const Rendezvous* rv);
 
 #endif

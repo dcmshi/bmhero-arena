@@ -65,8 +65,13 @@ for i in 1 2 3; do
     CUR=$(grep '^mesh ' "$DIR/p$i.txt" | sed 's/slot=[0-9]//')
     [ "$CUR" = "$REF" ] || { echo "mesh: HASH MISMATCH p$i"; exit 1; }
 done
+# How the traffic travelled, asserted from the server's own log. The negative
+# case matters as much as the positive one: without it, a direct run in which
+# punching silently broke and everything fell back to relay would still pass.
 if [ "$VARIANT" = "relay" ]; then
-    grep -q 'relay' "$DIR/rv.txt" || true   # informational; route assertions live in test_rendezvous
+    grep -q '^relay active' "$DIR/rv.txt" || { echo "mesh: relay carried no packets"; exit 1; }
+else
+    ! grep -q '^relay active' "$DIR/rv.txt" || { echo "mesh: traffic fell back to RELAY"; exit 1; }
 fi
 echo "mesh($VARIANT): MATCH - $REF"
 exit 0
