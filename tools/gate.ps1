@@ -57,6 +57,8 @@ Run-Suite "bomb_mechanics"  @($SIM, (Join-Path $root "tests\test_bomb_mechanics.
 Run-Suite "round_turn"      @($SIM, (Join-Path $root "tests\test_round.c"))
 Run-Suite "tune_probes"     @($SIM, (Join-Path $root "tools\tune_probes.c"),
                                (Join-Path $root "tests\test_tune_report.c"))
+Run-Suite "lobby_proto"     @($SIM, (Join-Path $root "src\lobby\lobby_proto.c"),
+                               (Join-Path $root "tests\test_lobby_proto.c"))
 
 # --- pinned hash + TUNE_VERSION (mirrors the CI logic) ---
 $pin = (Get-Content (Join-Path $root "tools\pinned_hash.txt") -Raw).Trim() -split '\s+'
