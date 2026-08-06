@@ -91,7 +91,7 @@ Rollback for Domain B needs only `memcpy(ArenaState)`. Full-sim savestates (whic
 1. **A0 — Headless arena sim.** ✅ *Done 2026-07-18 — `bmhero-arena/`: 944B ArenaState, full tick pipeline, replay + rollback-stress + snapshot tests green, CI hash-pin `a55aa9b1`.*
 2. **A1 — Arena on screen.** Battle menu entry, map-shell load, render bridge, 1P feel-matched against Hero's campaign movement.
 3. **A2 — 4P couch battle.** Pad assignment, shared camera, HUD, full ruleset, 3 arenas.
-4. **A3 — Online arena (rollback).** GekkoNet online 4P mesh + rendezvous server + lobby + desync surfacing. Builds the transport/session/lobby stack the campaign will reuse.
+4. **A3 — Online arena (rollback).** ✅ *Implemented 2026-08-06 — canonical repo, ROM-free: rendezvous+relay binary, lobby codes, one-socket custom GekkoNet adapter, 4P mesh green in four ctest variants, soak + desync pipeline; real-WAN human checkpoint pending (`HANDOFF-2026-08-06` item 1). Spec: `superpowers/specs/2026-08-05-a3-online-hardening-design.md`.* GekkoNet online 4P mesh + rendezvous server + lobby + desync surfacing. Builds the transport/session/lobby stack the campaign will reuse.
 5. **B0 — Local co-op campaign.** P2 injection patches: spawn, port-2 input, camera, HUD, triggers.
 6. **B1 — Campaign determinism harness.** Dual-instance replay runs, RDRAM checksum comparison; fix RNG/time violations. Gate for B2.
 7. **B2 — Online co-op (lockstep).** Delay-based backend on the A3 session stack + host-state resync.

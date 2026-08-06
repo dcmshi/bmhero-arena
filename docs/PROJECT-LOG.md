@@ -12,6 +12,45 @@ entry disagrees with `docs/bmhero-recomp-integration-notes.md`, the notes win.
 
 ---
 
+## A3 — online hardening implemented (2026-08-05 → 2026-08-06)
+
+> Current state lives in `CLAUDE.md` + `docs/HANDOFF-2026-08-06.md`. Spec
+> (the authority, amended twice in place):
+> `docs/superpowers/specs/2026-08-05-a3-online-hardening-design.md`.
+
+One brainstorm→spec→plan→SDD session (13 code commits, +4626 lines, canonical
+repo only — the fork untouched, the sim untouched: `fbdb0d08` @ v21 pinned
+throughout, the one new `src/arena/` file being the header-only
+`arena_script.h` extraction the gate proved behavior-neutral). Shipped: lobby
+wire codec + base32-Crockford lobby codes + `arena_net_version()` (behavioral
+version gate — replays the pinned scripted match, so `-DTUNE_*` override
+builds can't join); the pure rendezvous core (session table, punch
+arbitration where the SERVER decides so peers can't disagree, three expiry
+deadlines, per-IP rate limiting, mutation-tested); the deploy-anywhere
+`arena_rendezvous` binary; a custom one-socket GekkoNet adapter (punch, game,
+relay on the socket the server observed — why hole-punching works); the lobby
+client state machine; 4P mesh convergence over a real rendezvous in four
+ctest variants (direct / forced-relay / impaired-wan100 / desync-inject),
+with relay-vs-direct asserted from the server's own log in BOTH directions;
+rollback/stall stats + `tools/net-soak.ps1` (SOAK GREEN: wan100 ×5,
+forced-relay ×2, p95 depth 6, 0 desyncs); the desync pipeline (hard stop →
+bundle → `replay_bundle` names the corrupted tick and culprit peer,
+falsified in CI by deliberate injection); viewer `--host`/`--join CODE` with
+desync freeze + debug `--inject`.
+
+Review process paid for itself twice: the controller review caught that
+PEER_INTRO/PAIR_ROUTE were fire-once UDP pushes (~30% lobby-failure odds at
+1% WAN loss, invisible to every loopback test) — fixed by riding the
+idempotent retry paths; and the implementer's own measurement overturned a
+spec threshold (stalls are a fixed post-handshake transient, so "< 1/min"
+was unattainable and wrong-shaped — user-ratified replacement: < 5% of
+pumps). Two other implementer catches: punch budgets starting at PEER_INTRO
+would have expired under staggered joins (loopback would have shipped the
+bug green), and a relay-silence clock running from route creation reaped
+matches whose hosts dawdled in the lobby. Left open, on purpose: rendezvous
+deployment + the human real-WAN checkpoint (handoff item 1), then the fork
+slice (spec §G: local = `local_slot`, puppets = the other slots).
+
 ## Feel rounds 9–11 + oracle 2.0 (2026-08-01 → 2026-08-02)
 
 > Superseded-by-nothing as of writing; current state lives in `CLAUDE.md` +

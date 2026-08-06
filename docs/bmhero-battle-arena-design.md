@@ -145,7 +145,7 @@ ultramodern exposes 4 controller slots (`MAXCONTROLLERS 4`) but the frontend map
 | A0 ✅ | **Headless sim** — *done 2026-07-18, `bmhero-arena/`* | ArenaState, tick pipeline, tuning table v0 (placeholders marked `TODO(feel)`), replay/rollback-stress/snapshot/liveness tests; CI matrix in `ci/determinism.yml` pins scripted-match hash `a55aa9b1` across gcc/clang/MSVC-runner/ARM64 | 4P scripted match runs bit-identical across x86_64/ARM64, re-sim under continuous rollback *(local gcc -O0/-O2 verified; full matrix runs on first CI push)* |
 | A1 | **On screen** | Battle menu entry, map shell load, render bridge, 1P walking/throwing with Hero assets | Feels like Hero (side-by-side capture vs. campaign movement) |
 | A2 | **4P couch** | SDL pad assignment, shared camera, HUD, full ruleset, 3 arenas | 4P local match completable; playtest for stalling (§2 levers) |
-| A3 | **Online** | GekkoNet online sessions, rendezvous server, lobby codes, desync surfacing | 4P mesh match over real WAN (100ms, 1% loss) with no perceived input lag |
+| A3 ✅* | **Online** — *implemented 2026-08-06 (canonical, ROM-free); simulated-WAN soak GREEN at the spec's exit criteria; \*real-WAN human checkpoint pending (HANDOFF-2026-08-06 item 1)* | GekkoNet online sessions, rendezvous server, lobby codes, desync surfacing | 4P mesh match over real WAN (100ms, 1% loss) with no perceived input lag |
 | A4 | **Polish** | Items, spectators, reconnect-as-spectator, more arenas, sudden-death variants | — |
 
 Campaign co-op (Domain A) resumes after A3 — it shares the transport/session/lobby layer built here, so arena-first front-loads all reusable netcode.
