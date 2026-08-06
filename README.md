@@ -16,9 +16,20 @@ Design docs: `bmhero-multiplayer-architecture.md`, `bmhero-battle-arena-design.m
     tests/test_determinism.c  replay, rollback-stress, snapshot, liveness gates
     tools/viewer/             SDL3 debug viewer (dev tool; floats OK here): play the sim
                               with keyboard/gamepad, camera modes (F1), pause/step/slow-mo,
-                              HUD with live state hash, --frames N deterministic smoke flag
+                              HUD with live state hash, --frames N deterministic smoke flag;
+                              --host <ip[:port]> [--players N] / --join CODE for lobby online
     src/netplay/              SyncSession: one GekkoNet wrapper, three configs
-                              (couch / online / stress); owns ArenaState + tick
+                              (couch / online / stress); owns ArenaState + tick.
+                              Also the UDP socket, the custom GekkoNet adapter
+                              (punch/game/relay on one socket) and the lobby client
+    src/lobby/                lobby+rendezvous wire protocol, lobby codes, server logic
+    arena_rendezvous          deploy-anywhere lobby + relay server (--port, default 40064)
+    test_netplay_mesh         4P mesh client; tests/run_mesh_test.sh drives four ctest
+                              variants: direct | relay | impair (wan100) | inject
+    tools/net-soak.ps1        repeated 4P matches under an impairment profile
+                              (lan0/wan100/rough200) with the A3 exit criteria
+    replay_bundle             offline desync localization: replays a desync bundle's
+                              confirmed inputs and names the tick and the culprit peer
 
 ## Build & test
 
@@ -28,8 +39,15 @@ Design docs: `bmhero-multiplayer-architecture.md`, `bmhero-battle-arena-design.m
 
     # debug viewer (built automatically when SDL3 is found; see toolchain below):
     ./build/arena_viewer
-    # online (2P localhost): window 1: --host 7101 --peer 127.0.0.1:7102
-    #                        window 2: --join 127.0.0.1:7101 --port 7102
+    # online, by lobby code (no manual addressing):
+    #   ./build/arena_rendezvous --port 47901
+    #   window 1: ./build/arena_viewer --host 127.0.0.1:47901 --players 2   # prints a code
+    #   window 2: ./build/arena_viewer --join XXXXX-XXXXX-XXXXX
+    # on a desync the match freezes and writes desync_viewer_slotN.bin:
+    #   ./build/replay_bundle desync_viewer_slot0.bin [desync_viewer_slot1.bin]
+
+    # repeated impaired 4P soak with the A3 exit criteria:
+    tools\net-soak.ps1 -Profile wan100 -Matches 5
 
 ## Invariants (do not break)
 
@@ -51,6 +69,9 @@ cmake --build build && ctest --test-dir build`
 
 ## Next (per design docs)
 
-- GekkoNet `SyncSession` wrapper (couch/online/stress configs) — A2/A3
-- `TODO(feel)` constant transcription from bomberhackers/bmhero — A1
-- Render bridge into the recomp's `gObjects` — A1
+Done: A0 (headless sim), A1 (render bridge in the fork), A2 (`SyncSession`).
+A3 (online hardening) has the lobby/rendezvous, the mesh harness, the soak tool
+and the desync pipeline; still open there:
+
+- rendezvous deployment + a real-WAN human checkpoint
+- host migration, IPv6/DNS in codes, crypto/auth — explicit non-goals for now
