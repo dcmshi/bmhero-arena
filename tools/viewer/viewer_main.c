@@ -9,6 +9,8 @@
  * --frames N : deterministic smoke run — sessionless, exactly one tick per
  *              frame with neutral inputs, prints "frames N tick T hash H".
  * --seed X   : match seed (couch/smoke only; online seeds come from the lobby).
+ * --inject N : DEBUG, online only — corrupt our own sim at tick N to demonstrate
+ *              the desync UX on demand (same one-shot hook as the mesh client).
  *
  * On a desync the match stops being fed but keeps rendering the frozen state,
  * and a bundle is written for tools/replay_bundle. */
@@ -106,6 +108,7 @@ int main(int argc, char** argv) {
     int frames_limit = -1;
     uint32_t seed = 0xC0FFEE;
     int players_arg = 2;
+    int inject = -1;
     const char* host_arg = NULL;
     const char* join_code = NULL;
     for (int i = 1; i < argc - 1; i++) {
@@ -114,9 +117,11 @@ int main(int argc, char** argv) {
         if (strcmp(argv[i], "--host") == 0) host_arg = argv[i + 1];
         if (strcmp(argv[i], "--join") == 0) join_code = argv[i + 1];
         if (strcmp(argv[i], "--players") == 0) players_arg = atoi(argv[i + 1]);
+        if (strcmp(argv[i], "--inject") == 0) inject = atoi(argv[i + 1]);
     }
     const int smoke = frames_limit >= 0;
     const int online = !smoke && (host_arg != NULL || join_code != NULL);
+    if (!online) inject = -1;   /* debug hook is online-only; no-op elsewhere */
     if (players_arg < 2) players_arg = 2;
     if (players_arg > ARENA_MAX_PLAYERS) players_arg = ARENA_MAX_PLAYERS;
 
@@ -262,6 +267,12 @@ int main(int argc, char** argv) {
 
         if (online) {
             lobby_post_poll(&lc, udp_now_ms());
+            /* DEBUG one-shot: arm the corruption once we reach the tick, so the
+             * desync UX below can be demonstrated during a real-WAN checkpoint. */
+            if (inject >= 0 && (int)sync_present_tick(session) >= inject) {
+                sync_debug_corrupt(session);
+                inject = -1;
+            }
             /* First desync only: say what happened, leave a bundle behind, and
              * stop feeding the match. Rendering continues on the frozen state so
              * the last frame before the divergence stays on screen. */
