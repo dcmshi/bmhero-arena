@@ -90,15 +90,18 @@ Messages:
 - `RELAY {session_id, from_slot, to_slot, payload}` — client→server→client;
   the adapter unwraps. Server forwards only between registered members of
   the named session, source-address-checked.
-- `START {seed, arena_id, num_players, input_delay, slot_assignments}` —
-  host-authored, server fans out repeatedly until every peer sends
-  `START_ACK`.
+- `START {seed, arena_id, num_players, input_delay}` — host-authored, server
+  fans out repeatedly until every peer sends `START_ACK`. (Slots are already
+  assigned at join time via `JOIN_RESP`; host = slot 0.)
 - `KEEPALIVE` — every 10s from registered clients pre-match. In-match, game
   traffic itself keeps NAT mappings alive; only relay pairs still touch the
   server.
 
 **Version gate:** `arena_net_version()` = fnv1a over (protocol version,
-`TUNE_VERSION`, `sizeof(ArenaState)`, the tuning-table bytes). Carried in
+`TUNE_VERSION`, `sizeof(ArenaState)`, the pinned scripted match's final-state
+hash — replayed once at client startup, ~0.3s; the tuning "table" is
+`#define`s, so behavioral coverage via the scripted match is the only hash
+that also catches `-DTUNE_*` override builds). Carried in
 `HOST_REQ`/`JOIN_REQ`; mismatch → `REJECT{VERSION_MISMATCH}`. This enforces
 "peers must match BOTH the tune version and the layout" at the front door.
 
