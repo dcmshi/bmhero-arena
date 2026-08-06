@@ -51,4 +51,19 @@ uint32_t          sync_present_hash(const SyncSession* s);
  * behind the confirmed frontier). 0 if evicted (ring of 256). */
 uint32_t          sync_hash_at(const SyncSession* s, uint32_t tick);
 
+/* Rollback/stall accounting, for the A3 soak's exit criteria. Counted for
+ * ONLINE sessions only, and only once GekkoSessionStarted has fired — before
+ * that every pump trivially "stalls" waiting on the handshake. Stays all-zero
+ * in COUCH and STRESS (whose rollbacks are synthetic by construction).
+ *   rollback_ticks     total re-simulated ticks
+ *   max_rollback_depth deepest single-pump rollback
+ *   stall_frames       pumps that advanced no fresh tick while connected
+ *   pumps              counted sync_frame calls
+ *   rbhist[d]          pumps whose rollback depth was d; [8] = 8 or more */
+typedef struct {
+    uint32_t rollback_ticks, max_rollback_depth, stall_frames, pumps;
+    uint32_t rbhist[9];
+} SyncStats;
+void              sync_stats(const SyncSession* s, SyncStats* out);
+
 #endif

@@ -128,6 +128,16 @@ int main(int argc, char** argv) {
     uint32_t h = sync_hash_at(s, target);
     if (h == 0) { printf("FAIL: never confirmed tick %u\n", target); return 1; }
     printf("mesh slot=%d tick=%u hash=%08x\n", me, target, h);
+    /* Timing evidence for the soak: impairment must move these and never the
+     * hash above. tools/net-soak.ps1 aggregates both lines across matches. */
+    SyncStats st_; sync_stats(s, &st_);
+    printf("metrics slot=%d stalls=%u rb_ticks=%u rb_max=%u pumps=%u\n",
+           me, st_.stall_frames, st_.rollback_ticks, st_.max_rollback_depth,
+           st_.pumps);
+    printf("rbhist");
+    for (int i = 0; i <= 8; i++) printf(" %d:%u", i, st_.rbhist[i]);
+    printf("\n");
+    fflush(stdout);
     sync_destroy(s);
     net_adapter_shutdown();
     return 0;

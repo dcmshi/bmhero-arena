@@ -154,6 +154,14 @@ if(BASH_PROGRAM)
            COMMAND ${BASH_PROGRAM} ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_mesh_test.sh
                    $<TARGET_FILE:test_netplay_mesh> $<TARGET_FILE:arena_rendezvous> relay)
   set_tests_properties(netplay_mesh_relay PROPERTIES TIMEOUT 180)
+
+  # Same mesh under the wan100 profile (50ms +-10 jitter, 1% loss, 1% reorder):
+  # rollbacks and stalls become real, the hashes must not care. Slower than the
+  # clean variants by construction, hence the longer timeout.
+  add_test(NAME netplay_mesh_impaired
+           COMMAND ${BASH_PROGRAM} ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_mesh_test.sh
+                   $<TARGET_FILE:test_netplay_mesh> $<TARGET_FILE:arena_rendezvous> impair)
+  set_tests_properties(netplay_mesh_impaired PROPERTIES TIMEOUT 300)
 else()
   message(STATUS "bash not found - netplay_p2p/netplay_mesh tests skipped")
 endif()

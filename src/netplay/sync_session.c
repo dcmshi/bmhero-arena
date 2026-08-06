@@ -21,6 +21,8 @@ struct SyncSession {
      * it must be storage the SESSION owns, since gekko keeps the pointer. */
     uint8_t       slot_addr[ARENA_MAX_PLAYERS];
     TickHash      ring[256];
+    SyncStats     stats;
+    bool          started;          /* GekkoSessionStarted seen (ONLINE) */
 };
 
 SyncSession* sync_create(const SyncConfig* cfg) {
@@ -100,6 +102,10 @@ uint32_t sync_hash_at(const SyncSession* s, uint32_t tick) {
     const TickHash* th = &s->ring[tick & 255u];
     return (th->tick == tick) ? th->hash : 0;
 }
+void sync_stats(const SyncSession* s, SyncStats* out) {
+    if (!s || !out) return;
+    *out = s->stats;
+}
 
 int sync_frame(SyncSession* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
     if (s->mode == SYNC_ONLINE) gekko_network_poll(s->gk);
@@ -115,14 +121,14 @@ int sync_frame(SyncSession* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
     GekkoSessionEvent** sev = gekko_session_events(s->gk, &sec);
     for (int i = 0; i < sec; i++) {
         switch (sev[i]->type) {
-        case GekkoSessionStarted:     s->connected = true;  break;
+        case GekkoSessionStarted:     s->connected = true; s->started = true; break;
         case GekkoPlayerDisconnected: s->connected = false; break;
         case GekkoDesyncDetected:     s->desynced = true;   break;
         default: break;
         }
     }
 
-    int fresh = 0, gec = 0;
+    int fresh = 0, rb = 0, gec = 0;
     GekkoGameEvent** gev = gekko_update_session(s->gk, &gec);
     for (int i = 0; i < gec; i++) {
         GekkoGameEvent* e = gev[i];
@@ -142,11 +148,20 @@ int sync_frame(SyncSession* s, const ArenaInput inputs[ARENA_MAX_PLAYERS]) {
             arena_tick(&s->state, in);
             s->ring[s->state.tick & 255u].tick = s->state.tick;
             s->ring[s->state.tick & 255u].hash = arena_hash(&s->state);
-            if (!e->data.adv.rolling_back) fresh++;
+            if (e->data.adv.rolling_back) rb++; else fresh++;
             break;
         }
         default: break;
         }
+    }
+
+    if (s->mode == SYNC_ONLINE && s->started) {
+        s->stats.pumps++;
+        s->stats.rollback_ticks += (uint32_t)rb;
+        if ((uint32_t)rb > s->stats.max_rollback_depth)
+            s->stats.max_rollback_depth = (uint32_t)rb;
+        s->stats.rbhist[rb > 8 ? 8 : rb]++;
+        if (fresh == 0 && s->connected) s->stats.stall_frames++;
     }
     return fresh;
 }
